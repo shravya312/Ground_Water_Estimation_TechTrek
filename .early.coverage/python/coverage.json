@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "version": "1.0",
+    "timestamp": "2025-09-08T14:18:49.496Z",
+    "branch_coverage": false,
+    "show_contexts": false
+  },
+  "files": {},
+  "totals": {
+    "covered_lines": 0,
+    "num_statements": 0,
+    "percent_covered": 0,
+    "missing_lines": 0,
+    "excluded_lines": 0
+  }
+}
