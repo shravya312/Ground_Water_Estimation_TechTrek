@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+virt/
+venv/
+.env
+
+# Data files
+master_groundwater_data.csv
+cleaned_groundwater_data.csv
+Ground_Water_Estimation_TechTrek/cleaned_groundwater_data.csv
+Ground_Water_Estimation_TechTrek/datasets123/
+
+# Streamlit
+.streamlit/
