@@ -36,7 +36,7 @@ except Exception as e:
 
 # Sentence Transformer for Embeddings
 try:
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    model = SentenceTransformer("all-MiniLM-L6-v2", device='cpu')
 except Exception as e:
     st.error(f"Failed to initialize SentenceTransformer: {str(e)}")
     st.stop()

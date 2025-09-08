@@ -92,6 +92,7 @@ if __name__ == "__main__":
         master_groundwater_df['DISTRICT'] = master_groundwater_df['DISTRICT'].astype(str)
         master_groundwater_df.to_csv("master_groundwater_data.csv", index=False)
         print("Successfully created master_groundwater_data.csv")
+        print(f"Master DataFrame columns: {master_groundwater_df.columns.tolist()}") # Added this line
         print(f"Master DataFrame head:\n{master_groundwater_df.head()}")
     else:
         print("No Excel files were processed successfully to create the master dataset.")
