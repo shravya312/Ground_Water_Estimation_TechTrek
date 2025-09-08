@@ -412,7 +412,7 @@ def expand_query(query, num_terms=3):
         st.warning(f"Error expanding query: {e}")
         return ""
 
-def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None):
+def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None, chat_history=None):
     """Use Gemini to answer the question based on structured Excel data."""
     if not query or not context_data:
         return "Please provide both a question and relevant data context."
@@ -458,6 +458,11 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
 
     year_info = f" for the year {year}" if year else " (averaged across all available years)"
     location_info = f" for {target_district} District, {target_state}" if target_district else (f" for {target_state}" if target_state else "")
+    
+    conversation_history_str = ""
+    if chat_history:
+        conversation_history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history])
+        conversation_history_str = f"\n--- Conversation History ---\n{conversation_history_str}\n"
 
     prompt = (
         f"You are an expert groundwater data analyst. Provide a concise summary of the groundwater data.\n"
@@ -465,7 +470,8 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
 - If a specific year is provided, give data for that year.
 - If no specific year is provided, summarize the data including averages across all available years for the specified location (state or district).
 - Do NOT ask follow-up questions about what aspect of estimation the user is interested in if the data contains multiple metrics. Just provide a summary of the available relevant metrics.
-"""
+|"""
+        f"{conversation_history_str}" # Include conversation history here
         f"Base your answer ONLY on the following groundwater data{location_info}{year_info}:\n{context_str}\n\n"
         f"If the data doesn't contain the answer, state that. Do NOT make up information.\n"
         f"Question: {query}\n"
@@ -488,6 +494,9 @@ with st.sidebar:
         clear_all_embeddings()
         st.session_state.embeddings_uploaded = False
         st.rerun()
+    if st.button("🔄 Clear Conversation", help="Start a new chat session by clearing the current conversation history"):
+        st.session_state.messages = []
+        st.experimental_rerun()
 
     st.header("ℹ Information")
     st.info("""
@@ -508,6 +517,8 @@ if 'all_chunks' not in st.session_state:
     st.session_state.all_chunks = None
 if 'bm25_df' not in st.session_state:
     st.session_state.bm25_df = None
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
 # --- Main App Logic ---
 master_df = load_master_dataframe()
@@ -536,9 +547,21 @@ if setup_collection():
 
 # --- Chat Interface ---
 st.header("Ask a Question about Groundwater Data")
-user_query = st.text_input("You:", key="user_input")
+
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+user_query = st.chat_input("You:", key="user_input")
 
 if user_query and st.session_state.embeddings_uploaded:
+    # Add user message to chat history
+    st.session_state.messages.append({"role": "user", "content": user_query})
+    # Display user message in chat message container
+    with st.chat_message("user"):
+        st.markdown(user_query)
+
     # --- NLP for year extraction ---
     year = None
     year_match = re.search(r'\b(19|20)\d{2}\b', user_query) # Basic regex for 4-digit year
@@ -581,8 +604,13 @@ if user_query and st.session_state.embeddings_uploaded:
     if re_ranked_results:
         context_data = [res['data'] for res in re_ranked_results]
         st.info("🤖 Generating answer from Gemini...")
-        answer = generate_answer_from_gemini(user_query, context_data, year=year, target_state=target_state, target_district=target_district)
+        answer = generate_answer_from_gemini(user_query, context_data, year=year, target_state=target_state, target_district=target_district, chat_history=st.session_state.messages)
         st.subheader("🧠 Answer:")
-        st.write(answer)
+        with st.chat_message("assistant"):
+            st.markdown(answer)
+        st.session_state.messages.append({"role": "assistant", "content": answer})
     else:
-        st.warning("I couldn't find enough relevant information in the groundwater data to answer your question.")
+        warning_message = "I couldn't find enough relevant information in the groundwater data to answer your question."
+        with st.chat_message("assistant"):
+            st.warning(warning_message)
+        st.session_state.messages.append({"role": "assistant", "content": warning_message})
