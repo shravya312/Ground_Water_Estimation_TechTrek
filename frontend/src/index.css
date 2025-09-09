@@ -1,0 +1,191 @@
+:root {
+    /* Palette: Blue Gray #99B0B0, Taupe #B5B2B0, Cream #FCFAF0, Slate #8A9EA0 */
+    --color-blue-gray: #99B0B0;
+    --color-taupe: #B5B2B0;
+    --color-cream: #FCFAF0;
+    --color-slate: #8A9EA0;
+    font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+    line-height: 1.5;
+    font-weight: 400;
+    color-scheme: light dark;
+    color: #213547;
+    background-color: var(--color-cream);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    font-weight: 500;
+    color: var(--color-slate);
+    text-decoration: inherit;
+}
+
+a:hover {
+    color: var(--color-blue-gray);
+}
+
+body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    background: linear-gradient(135deg, rgba(153, 176, 176, 0.15), rgba(181, 178, 176, 0.15));
+}
+
+/* Disable page scrolling globally; chat uses internal scroll */
+html, body, #root {
+    height: 100%;
+    overflow: hidden;
+}
+
+h1 {
+    font-size: 3.2em;
+    line-height: 1.1;
+}
+
+button {
+    border-radius: 8px;
+    border: 1px solid transparent;
+    padding: 0.6em 1.2em;
+    font-size: 1em;
+    font-weight: 500;
+    font-family: inherit;
+    background-color: var(--color-blue-gray);
+    color: #0f172a;
+    cursor: pointer;
+    transition: border-color 0.25s, transform 200ms ease;
+}
+
+button:hover {
+    border-color: var(--color-slate);
+    transform: translateY(-1px);
+}
+
+button:focus,
+button:focus-visible {
+    outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Shared components */
+.container-centered {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.glass {
+    background: rgba(252, 250, 240, 0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(138, 158, 160, 0.2);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    border-radius: 16px;
+}
+
+/* Simple float-up animation for elements entering */
+@keyframes floatUp {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in-up {
+    animation: floatUp 500ms ease forwards;
+}
+
+/* Chat input subtle pulse when focused */
+@keyframes focusPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(153, 176, 176, 0.35);
+    }
+    100% {
+        box-shadow: 0 0 0 8px rgba(153, 176, 176, 0);
+    }
+}
+
+.pulse-focus:focus-within {
+    animation: focusPulse 1s ease;
+}
+
+/* Responsive tweaks */
+.landing-title {
+    font-size: clamp(1.75rem, 2.5vw + 1rem, 3rem);
+}
+
+.landing-sub {
+    font-size: clamp(1rem, 1.2vw + 0.5rem, 1.25rem);
+}
+
+.chat-root {
+    width: 100%;
+}
+
+.chat-sidebar {
+    flex-shrink: 0;
+}
+
+.chat-main {
+    width: 100%;
+}
+
+.chat-messages {
+    display: flex;
+    flex-direction: column;
+}
+
+.chat-messages-inner {
+    padding-bottom: 0.5rem;
+}
+
+.chat-input {
+    align-items: center;
+}
+
+.chat-send {
+    white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+    .chat-sidebar {
+        display: none;
+    }
+    .chat-messages-inner {
+        max-width: min(92vw, 860px);
+    }
+}
+
+@media (max-width: 640px) {
+    .chat-input {
+        flex-direction: column;
+    }
+    .chat-send {
+        width: 100%;
+    }
+}
+
+@media (prefers-color-scheme: dark) {
+     :root {
+        color: rgba(255, 255, 255, 0.92);
+        background-color: #0f172a;
+    }
+    body {
+        background: linear-gradient(135deg, rgba(153, 176, 176, 0.08), rgba(181, 178, 176, 0.08));
+    }
+    .glass {
+        background: rgba(15, 23, 42, 0.5);
+        border-color: rgba(153, 176, 176, 0.25);
+    }
+    button {
+        color: #0f172a;
+    }
+}
+
+
