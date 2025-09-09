@@ -1,6 +1,13 @@
 pandas
-spacy==3.8.7
+spacy
 openpyxl
-numpy==1.26.4
+numpy
 sentence-transformers
 scikit-learn
+streamlit
+dotenv
+qdrant-client
+rank_bm25
+google-generativeai
+huggingface-hub
+transformers

@@ -1,4 +1,3 @@
-
 import os
 import streamlit as st
 from qdrant_client import QdrantClient
@@ -14,6 +13,8 @@ import hashlib
 import uuid
 from rank_bm25 import BM25Okapi
 import pandas as pd
+import spacy
+import torch
 
 load_dotenv()
 
@@ -36,9 +37,16 @@ except Exception as e:
 
 # Sentence Transformer for Embeddings
 try:
-    model = SentenceTransformer("all-MiniLM-L6-v2", device='cpu')
+    model = SentenceTransformer("all-MiniLM-L6-v2", device=torch.device('cpu'))
 except Exception as e:
     st.error(f"Failed to initialize SentenceTransformer: {str(e)}")
+    st.stop()
+
+# spaCy NLP model
+try:
+    nlp = spacy.load("en_core_web_sm")
+except Exception as e:
+    st.error(f"Failed to initialize spaCy NLP model: {str(e)}")
     st.stop()
 
 # Gemini API
@@ -58,6 +66,7 @@ MIN_SIMILARITY_SCORE = 0.5  # Adjusted for potentially more diverse Excel data
 master_df = None # To be loaded from master_groundwater_data.csv
 
 # --- Core Functions (Adapted for Excel Data) ---
+@st.cache_data(show_spinner=False)
 def load_master_dataframe():
     global master_df
     if master_df is None:
@@ -67,7 +76,7 @@ def load_master_dataframe():
             master_df['STATE'] = master_df['STATE'].fillna('').astype(str)
             master_df['DISTRICT'] = master_df['DISTRICT'].fillna('').astype(str)
             master_df['ASSESSMENT UNIT'] = master_df['ASSESSMENT UNIT'].fillna('').astype(str)
-            master_df['combined_text'] = master_df['STATE'] + " " + master_df['DISTRICT'] + " " + master_df['ASSESSMENT UNIT'] + " " + master_df['Assessment_Year'].astype(str)
+            master_df['combined_text'] = master_df.apply(create_detailed_combined_text, axis=1)
             st.success("Master groundwater data loaded.")
         except FileNotFoundError:
             st.error("Error: master_groundwater_data.csv not found. Please run excel_ingestor.py first.")
@@ -77,10 +86,22 @@ def load_master_dataframe():
             st.stop()
     return master_df
 
+def create_detailed_combined_text(row):
+    """
+    Generates a detailed combined text string for a DataFrame row,
+    including all column names and their non-null values.
+    """
+    parts = []
+    for col, value in row.items():
+        if pd.notna(value) and value != '' and col not in ['S.No']: # Exclude S.No and empty values
+            parts.append(f"{col}: {value}")
+    return " | ".join(parts)
+
 def tokenize_text(text):
     """Tokenize text for BM25 processing."""
     return text.lower().split()
 
+@st.cache_data(show_spinner=False)
 def get_embeddings(texts):
     """Convert text into embeddings"""
     try:
@@ -124,7 +145,8 @@ def setup_collection():
                 field_name="Assessment_Year",
                 field_schema=PayloadSchemaType.INTEGER
             )
-        except Exception:
+        except Exception as e:
+            st.exception(f"Error creating Assessment_Year payload index: {e}")
             pass # Index might already exist
         
         # Create index for STATE field if it doesn't exist
@@ -134,7 +156,8 @@ def setup_collection():
                 field_name="STATE",
                 field_schema=PayloadSchemaType.KEYWORD # Use KEYWORD for string matching
             )
-        except Exception:
+        except Exception as e:
+            st.exception(f"Error creating STATE payload index: {e}")
             pass # Index might already exist
 
         # Create index for DISTRICT field if it doesn't exist
@@ -144,7 +167,8 @@ def setup_collection():
                 field_name="DISTRICT",
                 field_schema=PayloadSchemaType.KEYWORD # Use KEYWORD for string matching
             )
-        except Exception:
+        except Exception as e:
+            st.exception(f"Error creating DISTRICT payload index: {e}")
             pass # Index might already exist
         
         return True
@@ -158,7 +182,7 @@ def check_excel_embeddings_exist():
         collection_info = qdrant_client.get_collection(collection_name=COLLECTION_NAME)
         return collection_info.points_count > 0
     except Exception as e:
-        st.warning(f"Error checking existing embeddings: {str(e)}")
+        st.exception(f"Error checking existing embeddings: {str(e)}")
         return False
 
 def clear_all_embeddings():
@@ -191,7 +215,7 @@ def upload_excel_to_qdrant(df_to_upload, batch_size=1000):
             points = []
             for j, (index, row) in enumerate(batch_df.iterrows()):
                 vector_list = batch_embeddings[j].tolist()
-                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{row['STATE']}-{row['DISTRICT']}-{row['ASSESSMENT UNIT']}-{row['Assessment_Year']}-{index}")) # Using original DataFrame index for unique ID
+                point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, row['combined_text'])) # Using hash of combined_text for unique ID
                 payload = row.to_dict()
                 payload['text'] = row['combined_text'] 
                 points.append(
@@ -255,7 +279,8 @@ def load_all_excel_chunks_for_bm25(df_for_bm25=None):
         st.info("No Excel data found in Qdrant or DataFrame for BM25 initialization. Initialized with empty data.")
 
 
-def search_excel_chunks(query_text, year=None, target_state=None, target_district=None):
+@st.cache_data(show_spinner=False)
+def search_excel_chunks(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
     """Retrieve most relevant Excel data rows using hybrid search, with optional year and location filtering."""
     qdrant_filter_conditions = []
 
@@ -283,6 +308,28 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
             )
         )
 
+    # Add filters for extracted parameters
+    if extracted_parameters:
+        for param_type, value in extracted_parameters.items():
+            # For now, a simple text match for the parameter type. 
+            # More sophisticated filtering might be needed based on exact column names and numerical ranges.
+            qdrant_filter_conditions.append(
+                FieldCondition(
+                    key="text", # Searching within the combined_text field
+                    match=MatchValue(value=str(param_type).lower()) # Match the parameter type as a keyword
+                )
+            )
+            # If a numerical value is associated, consider adding range filters for specific columns
+            # This part would require mapping param_type to actual numerical columns in your DataFrame
+            # For instance, if 'rainfall' maps to 'Rainfall (mm) - Total'
+            # if param_type == "rainfall" and isinstance(value, (int, float)):
+            #     qdrant_filter_conditions.append(
+            #         FieldCondition(
+            #             key="Rainfall (mm) - Total",
+            #             range=models.Range(gte=value * 0.9, lte=value * 1.1) # Example: 10% range
+            #         )
+            #     )
+    
     qdrant_filter = Filter(must=qdrant_filter_conditions) if qdrant_filter_conditions else None
 
     try:
@@ -320,7 +367,7 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
         
         # --- Hybrid Scoring ---
         combined_scores = {}
-        alpha = 0.5 # Weight for dense vs sparse
+        alpha = st.session_state.alpha # Weight for dense vs sparse
 
         all_candidate_texts = set(dense_hits.keys()).union(set(sparse_hits.keys()))
 
@@ -412,7 +459,7 @@ def expand_query(query, num_terms=3):
         st.warning(f"Error expanding query: {e}")
         return ""
 
-def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None, chat_history=None):
+def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None, chat_history=None, extracted_parameters=None):
     """Use Gemini to answer the question based on structured Excel data."""
     if not query or not context_data:
         return "Please provide both a question and relevant data context."
@@ -424,7 +471,7 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
         for key, value in item.items():
             # Include specific relevant metrics, excluding internal keys or combined_text
             if key not in ['STATE', 'DISTRICT', 'ASSESSMENT UNIT', 'Assessment_Year', 'combined_text', 'text'] and pd.notna(value):
-                data_summary.append(f"  - {key}: {value}")
+                data_summary.append(f"   - {key}: {value}")
         data_summary.append("---")
     
     # If no specific year, calculate and add averages to the context (for district or state-level data)
@@ -451,7 +498,7 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
         if avg_data:
             data_summary.append(f"\n--- Averages for the retrieved data ---")
             for key, value in avg_data.items():
-                data_summary.append(f"  - Average {key}: {value:.2f}")
+                data_summary.append(f"   - Average {key}: {value:.2f}")
             data_summary.append("---")
     
     context_str = "\n".join(data_summary)
@@ -464,6 +511,13 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
         conversation_history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history])
         conversation_history_str = f"\n--- Conversation History ---\n{conversation_history_str}\n"
 
+    extracted_params_str = ""
+    if extracted_parameters:
+        extracted_params_str = "\nExtracted specific parameters from query: "
+        for param, val in extracted_parameters.items():
+            extracted_params_str += f"{param}: {val}. "
+        extracted_params_str += "\n"
+
     prompt = (
         f"You are an expert groundwater data analyst. Provide a concise summary of the groundwater data.\n"
         f"""Here are the rules for data presentation:
@@ -472,6 +526,7 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
 - Do NOT ask follow-up questions about what aspect of estimation the user is interested in if the data contains multiple metrics. Just provide a summary of the available relevant metrics.
 |"""
         f"{conversation_history_str}" # Include conversation history here
+        f"{extracted_params_str}" # Include extracted parameters here
         f"Base your answer ONLY on the following groundwater data{location_info}{year_info}:\n{context_str}\n\n"
         f"If the data doesn't contain the answer, state that. Do NOT make up information.\n"
         f"Question: {query}\n"
@@ -497,6 +552,17 @@ with st.sidebar:
     if st.button("🔄 Clear Conversation", help="Start a new chat session by clearing the current conversation history"):
         st.session_state.messages = []
         st.experimental_rerun()
+
+    st.header("Hyperparameters")
+    # Slider to adjust the alpha for hybrid search
+    st.session_state.alpha = st.slider(
+        "Alpha for Hybrid Search (Dense vs Sparse)",
+        min_value=0.0,
+        max_value=1.0,
+        value=0.5, # Default value
+        step=0.05,
+        help="Adjust the weighting between dense (vector) and sparse (BM25) retrieval."
+    )
 
     st.header("ℹ Information")
     st.info("""
@@ -591,20 +657,52 @@ if user_query and st.session_state.embeddings_uploaded:
                 if re.search(r'\b' + re.escape(district) + r'\b', user_query, re.IGNORECASE):
                     target_district = district
                     break
+    
+    # --- Enhanced NLP for extracting specific groundwater parameters and values ---
+    extracted_parameters = {}
+    doc = nlp(user_query) # Process query with spaCy for better entity recognition
 
+    # Keywords for groundwater metrics
+    groundwater_keywords = {
+        "rainfall": ["rainfall", "precipitation"],
+        "groundwater availability": ["availability", "groundwater availability", "resource"],
+        "extraction": ["extraction", "drawdown"],
+        "recharge": ["recharge"],
+        "saline": ["saline", "salty"],
+        "fresh": ["fresh", "sweet"],
+        "annual": ["annual", "yearly"],
+        "total": ["total", "overall"]
+    }
+
+    # Look for numerical values near keywords
+    for keyword_type, synonyms in groundwater_keywords.items():
+        for token in doc:
+            if token.text.lower() in synonyms or any(synonym in token.text.lower() for synonym in synonyms): # Check for both exact match and substring
+                # Look for numbers in the vicinity of the keyword
+                for i in range(max(0, token.i - 3), min(len(doc), token.i + 4)): # Look 3 tokens before and 3 tokens after
+                    if doc[i].is_digit and doc[i].text.isdigit(): # Ensure it's a digit and not part of a word
+                        try:
+                            value = float(doc[i].text)
+                            # Store the first numerical value found for this keyword type
+                            if keyword_type not in extracted_parameters:
+                                extracted_parameters[keyword_type] = value
+                                break # Move to the next keyword type once a value is found
+                        except ValueError:
+                            continue
+    
     st.info("✨ Expanding query...")
     expanded_terms = expand_query(user_query)
     expanded_query_text = f"{user_query} {expanded_terms}".strip()
     
     st.info("🔍 Searching for relevant information...")
-    candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=target_state, target_district=target_district)
+    candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
     
     re_ranked_results = re_rank_chunks(expanded_query_text, candidate_results, top_k=5)
     
     if re_ranked_results:
         context_data = [res['data'] for res in re_ranked_results]
         st.info("🤖 Generating answer from Gemini...")
-        answer = generate_answer_from_gemini(user_query, context_data, year=year, target_state=target_state, target_district=target_district, chat_history=st.session_state.messages)
+        answer = generate_answer_from_gemini(user_query, context_data, year=year, target_state=target_state, target_district=target_district, chat_history=st.session_state.messages, extracted_parameters=extracted_parameters)
         st.subheader("🧠 Answer:")
         with st.chat_message("assistant"):
             st.markdown(answer)
