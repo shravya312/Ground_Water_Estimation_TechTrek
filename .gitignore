@@ -27,7 +27,8 @@ virt/
 *.env
 
 # --------------------
-# Data Files (local only, don’t push to GitHub)
+# Data Files (local only, don't push to GitHub)
+# --------------------
 *.csv
 *.tsv
 *.xlsx
