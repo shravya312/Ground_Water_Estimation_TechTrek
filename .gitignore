@@ -19,3 +19,4 @@ Ground_Water_Estimation_TechTrek/datasets123/
 .streamlit/
 package-lock.json
 package.json
+.venv/
