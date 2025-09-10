@@ -17,3 +17,5 @@ Ground_Water_Estimation_TechTrek/datasets123/
 
 # Streamlit
 .streamlit/
+package-lock.json
+package.json

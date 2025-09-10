@@ -22,16 +22,26 @@ function Chat() {
     setInput('')
     try {
       setSending(true)
-      const res = await fetch('/ask', {
+      const apiBase = import.meta.env?.VITE_API_URL || ''
+      const res = await fetch(`${apiBase}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: trimmed })
       })
-      const data = await res.json()
+      let data
+      try {
+        data = await res.json()
+      } catch (e) {
+        throw new Error(`Unexpected response from server (status ${res.status})`)
+      }
+      if (!res.ok) {
+        throw new Error(data?.error || `Server error (status ${res.status})`)
+      }
       const answer = data?.answer || data?.error || 'No answer returned.'
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', text: String(answer) }])
     } catch (err) {
-      setMessages(prev => [...prev, { id: Date.now() + 2, role: 'assistant', text: 'Error contacting server.' }])
+      const msg = err?.message ? `Error: ${err.message}` : 'Error contacting server.'
+      setMessages(prev => [...prev, { id: Date.now() + 2, role: 'assistant', text: msg }])
     } finally {
       setSending(false)
     }
