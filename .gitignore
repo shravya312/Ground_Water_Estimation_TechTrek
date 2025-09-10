@@ -1,22 +1,60 @@
+# --------------------
 # Python
+# --------------------
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
 
-# Virtual environment
-virt/
+# --------------------
+# Virtual Environments
+# --------------------
+.venv/
 venv/
-.env
+env/
+ENV/
+virt/
 
-# Data files
+# --------------------
+# Environment Files
+# --------------------
+.env
+*.env
+
+# --------------------
+# Data Files (local only, don’t push to GitHub)
+*.csv
+*.tsv
+*.xlsx
+*.json
+*.db
+*.sqlite
+datasets123/
+Ground_Water_Estimation_TechTrek/datasets123/
 master_groundwater_data.csv
 cleaned_groundwater_data.csv
 Ground_Water_Estimation_TechTrek/cleaned_groundwater_data.csv
-Ground_Water_Estimation_TechTrek/datasets123/
 
+# --------------------
 # Streamlit
+# --------------------
 .streamlit/
+
+# --------------------
+# Node.js
+# --------------------
+node_modules/
+frontend/node_modules/
 package-lock.json
 package.json
-.venv/
+
+# --------------------
+# OS / Misc
+# --------------------
+.DS_Store
+Thumbs.db
