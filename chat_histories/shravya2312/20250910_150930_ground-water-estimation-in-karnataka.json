@@ -1,0 +1,10 @@
+[
+  {
+    "role": "user",
+    "content": "ground water estimation in karnataka "
+  },
+  {
+    "role": "assistant",
+    "content": "Groundwater estimation for Karnataka, specifically Davanagere district, across 2021-2024 shows an average annual groundwater recharge of 59,180 ham (hectometer-meters).  The average annual extractable groundwater resource is 53,656 ham. Average annual groundwater extraction across all uses is 49,063 ham, resulting in an average stage of groundwater extraction of 97%.  In Gadag district for 2021,  annual groundwater recharge is 30,329 ham,  extractable resource is 27,296 ham, and extraction is 23,820 ham, resulting in a stage of extraction of 87%.  Note that \"Net Annual Groundwater Availability for Future Use\" varies considerably between districts and years.  Data on In-Storage Unconfined and Confined Groundwater Resources indicate 0 ham of saline water and varying amounts of fresh water in unconfined aquifers."
+  }
+]
