@@ -1,6 +1,8 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 function Resources() {
+  const navigate = useNavigate();
+
   return (
     <div className="landing-root">
       <header className="landing-header glass fade-in-up">
@@ -26,12 +28,12 @@ function Resources() {
           <article className="res-tile glass fade-in-up">
             <h3>At Home</h3>
             <p>Simple activities you can try at home to understand groundwater and conservation.</p>
-            <button className="btn-primary" type="button">Explore</button>
+            <button className="btn-primary" type="button" onClick={() => navigate('/at-home')}>Explore</button>
           </article>
           <article className="res-tile glass fade-in-up" style={{ animationDelay: '120ms' }}>
             <h3>In Your Community</h3>
             <p>Classroom and community projects for group learning and field exploration.</p>
-            <button className="btn-primary" type="button">Explore</button>
+            <button className="btn-primary" type="button" onClick={() => navigate('/in-your-community')}>Explore</button>
           </article>
         </section>
       </main>

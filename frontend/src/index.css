@@ -652,3 +652,45 @@ button:focus-visible {
     height: 26px;
 }
 
+.community-intro-split {
+  display: flex;
+  align-items: center;
+  gap: 20px; /* Adjust as needed for spacing */
+}
+
+.community-intro-text {
+  flex: 1; /* Allows text to take available space */
+}
+
+.community-intro-image {
+  flex-shrink: 0; /* Prevents image from shrinking */
+  max-width: 50%; /* Adjust as needed to control image size */
+  margin-top: 20px; /* Added to push the image down */
+}
+
+.community-intro-image img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px; /* Optional: adds rounded corners to the image */
+}
+
+@media (max-width: 768px) {
+  .community-intro-split {
+    flex-direction: column; /* Stack text and image vertically on smaller screens */
+  }
+  .community-intro-image {
+    max-width: 100%; /* Image takes full width on smaller screens */
+  }
+}
+
+.community-accordion-container {
+  display: flex;
+  flex-direction: column;
+  gap: 15px; /* Added to provide space between accordion items */
+  margin-top: 30px; /* Optional: adjust top margin for the whole container */
+}
+
+.accordion-item {
+  border: 1px solid rgba(138, 158, 160, 0.25);
+}
+

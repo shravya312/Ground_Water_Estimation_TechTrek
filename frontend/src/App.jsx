@@ -6,6 +6,8 @@ import Landing from './pages/Landing'
 import Groundwater from './pages/Groundwater'
 import Resources from './pages/Resources'
 import Chat from './pages/Chat'
+import AtHome from './pages/AtHome'
+import InYourCommunity from './pages/InYourCommunity'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -22,6 +24,8 @@ function App() {
         <Route path="/chat" element={user ? <Chat /> : <Navigate to="/" replace />} />
         <Route path="/groundwater" element={<Groundwater />} />
         <Route path="/resources" element={<Resources />} />
+        <Route path="/at-home" element={<AtHome />} />
+        <Route path="/in-your-community" element={<InYourCommunity />} />
       </Routes>
     </BrowserRouter>
   )
