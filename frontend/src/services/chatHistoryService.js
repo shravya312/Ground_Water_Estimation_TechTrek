@@ -43,11 +43,11 @@ export const saveChatMessage = async(userId, message) => {
 
             console.log('Message saved to subcollection with ID:', docRef.id)
 
-            // Update user's last chat activity
+            // Upsert user's last chat activity (create doc if missing)
             const userRef = doc(db, 'users', userId)
-            await updateDoc(userRef, {
+            await setDoc(userRef, {
                 lastChatActivity: serverTimestamp()
-            })
+            }, { merge: true })
 
             console.log('User activity updated successfully')
             return docRef.id
@@ -56,13 +56,13 @@ export const saveChatMessage = async(userId, message) => {
 
             // Fallback: Save to user document directly
             const userRef = doc(db, 'users', userId)
-            await updateDoc(userRef, {
+            await setDoc(userRef, {
                 chatHistory: arrayUnion({
                     ...message,
                     timestamp: serverTimestamp()
                 }),
                 lastChatActivity: serverTimestamp()
-            })
+            }, { merge: true })
 
             console.log('Message saved to user document successfully')
             return 'user_doc_' + Date.now()
@@ -134,19 +134,19 @@ export const clearChatHistory = async(userId) => {
 
             // Fallback: Clear from user document
             const userRef = doc(db, 'users', userId)
-            await updateDoc(userRef, {
+            await setDoc(userRef, {
                 chatHistory: [],
                 lastChatActivity: serverTimestamp()
-            })
+            }, { merge: true })
 
             console.log('Cleared user document chat history')
         }
 
         // Update user's last chat activity
         const userRef = doc(db, 'users', userId)
-        await updateDoc(userRef, {
+        await setDoc(userRef, {
             lastChatActivity: serverTimestamp()
-        })
+        }, { merge: true })
     } catch (error) {
         console.error('Error clearing chat history:', error)
         throw error

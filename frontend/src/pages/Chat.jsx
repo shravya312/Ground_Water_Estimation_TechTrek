@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { signOut } from 'firebase/auth'
-import { auth } from '../firebase'
+import { signOut, onAuthStateChanged } from 'firebase/auth'
+import { auth, db } from '../firebase'
+import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { saveChatMessage, getUserChatHistory, clearChatHistory } from '../services/chatHistoryService'
 
 function Chat() {
@@ -114,98 +115,106 @@ function Chat() {
     }
   }
 
-  // Load chat history when component mounts
+  // Helper: populate state from chat messages array
+  function populateFromChatHistory(chatHistory) {
+    setFullChatHistory(chatHistory)
+    if (!chatHistory || chatHistory.length === 0) return
+    const conversations = {}
+    chatHistory.forEach(msg => {
+      const convId = msg.conversationId || 'default'
+      if (!conversations[convId]) conversations[convId] = []
+      conversations[convId].push(msg)
+    })
+    const conversationIds = Object.keys(conversations)
+    const mostRecentConvId = conversationIds[conversationIds.length - 1]
+    const mostRecentConversation = conversations[mostRecentConvId] || []
+    const formattedMessages = mostRecentConversation.map(msg => ({
+      id: msg.id || Date.now() + Math.random(),
+      role: msg.role,
+      text: msg.text
+    }))
+    setMessages(formattedMessages)
+    setCurrentConversationId(mostRecentConvId)
+    // Build sidebar history as distinct conversations (latest first)
+    const convIdsByLatestTs = Object.entries(conversations)
+      .map(([cid, msgs]) => ({
+        cid,
+        lastTs: (msgs[msgs.length - 1]?.timestamp?.seconds) || 0,
+        firstUserText: (msgs.find(m => m.role === 'user')?.text) || '(no prompt)'
+      }))
+      .sort((a, b) => a.lastTs - b.lastTs)
+      .slice(-20)
+      .reverse()
+    setHistory(convIdsByLatestTs.map(x => ({ conversationId: x.cid, text: x.firstUserText })))
+  }
+
+  // Load chat history when auth state is ready. Also subscribe realtime to changes
   useEffect(() => {
-    const loadChatHistory = async () => {
-      if (auth.currentUser) {
-        try {
-          console.log('Loading chat history for user:', auth.currentUser.uid)
-          setLoadingHistory(true)
-          const chatHistory = await getUserChatHistory(auth.currentUser.uid)
-          console.log('Retrieved chat history:', chatHistory)
-          
-          if (chatHistory.length > 0) {
-            // Store full chat history
-            setFullChatHistory(chatHistory)
-            
-            // Group messages by conversation
-            const conversations = {}
-            chatHistory.forEach(msg => {
-              const convId = msg.conversationId || 'default'
-              if (!conversations[convId]) {
-                conversations[convId] = []
-              }
-              conversations[convId].push(msg)
-            })
-            
-            console.log('Grouped conversations:', conversations)
-            
-            // Get the most recent conversation
-            const conversationIds = Object.keys(conversations)
-            const mostRecentConvId = conversationIds[conversationIds.length - 1]
-            const mostRecentConversation = conversations[mostRecentConvId] || []
-            
-            console.log('Most recent conversation:', mostRecentConversation)
-            
-            // Convert to message format
-            const formattedMessages = mostRecentConversation.map(msg => ({
-              id: msg.id || Date.now() + Math.random(),
-              role: msg.role,
-              text: msg.text
-            }))
-            setMessages(formattedMessages)
-            setCurrentConversationId(mostRecentConvId)
-            
-            // Extract user messages for history sidebar (from all conversations)
-            const userMessages = chatHistory
-              .filter(msg => msg.role === 'user')
-              .map(msg => msg.text)
-              .slice(0, 20) // Show last 20 user messages
-            setHistory(userMessages)
-            
-            console.log('History loaded successfully:', userMessages.length, 'user messages')
-          } else {
-            console.log('No chat history found')
-          }
-        } catch (error) {
-          console.error('Error loading chat history:', error)
-          alert('Failed to load chat history. Please check console for details.')
-        } finally {
-          setLoadingHistory(false)
-        }
-      } else {
-        console.log('No authenticated user found')
+    let unsubChats = null
+    const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        setFullChatHistory([])
+        setHistory([])
+        setCurrentConversationId(null)
+        if (unsubChats) { unsubChats(); unsubChats = null }
+        return
       }
-    }
-    loadChatHistory()
+      try {
+        setLoadingHistory(true)
+        // Initial load via REST
+        const initial = await getUserChatHistory(user.uid)
+        populateFromChatHistory(initial)
+        // Realtime subscription for updates
+        try {
+          const chatsRef = collection(db, 'users', user.uid, 'chats')
+          const q = query(chatsRef, orderBy('timestamp', 'asc'))
+          unsubChats = onSnapshot(q, (snap) => {
+            const msgs = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            populateFromChatHistory(msgs)
+          })
+        } catch (e) {
+          console.warn('Realtime subscription failed, using static load only:', e)
+        }
+      } catch (err) {
+        console.error('Error loading chat history:', err)
+      } finally {
+        setLoadingHistory(false)
+      }
+    })
+    return () => { if (unsubChats) unsubChats(); unsubscribeAuth() }
   }, [])
 
   // Load conversation from history
-  const loadConversationFromHistory = (selectedPrompt, historyIndex) => {
+  const loadConversationFromHistory = (item, historyIndex) => {
     if (!fullChatHistory.length) return
-    
-    // Find the message that contains this prompt
-    const selectedMessage = fullChatHistory.find(msg => 
-      msg.role === 'user' && msg.text === selectedPrompt
-    )
-    
-    if (selectedMessage && selectedMessage.conversationId) {
-      // Get all messages from the same conversation
-      const conversationMessages = fullChatHistory.filter(msg => 
-        msg.conversationId === selectedMessage.conversationId
-      )
-      
-      // Convert to message format and update the chat
+    // Prefer conversationId if available from sidebar item
+    if (item?.conversationId) {
+      const conversationMessages = fullChatHistory.filter(msg => msg.conversationId === item.conversationId)
       const formattedMessages = conversationMessages.map(msg => ({
         id: msg.id || Date.now() + Math.random(),
         role: msg.role,
         text: msg.text
       }))
-      
       setMessages(formattedMessages)
-      setCurrentConversationId(selectedMessage.conversationId)
+      setCurrentConversationId(item.conversationId)
       setSelectedHistoryIndex(historyIndex)
+      return
     }
+    // Fallback by prompt text match
+    const candidates = fullChatHistory.filter(msg => msg.role === 'user' && msg.text === item)
+    if (candidates.length === 0) return
+    const sorted = candidates.sort((a, b) => ((a.timestamp?.seconds||0) - (b.timestamp?.seconds||0)))
+    const selectedMessage = sorted[sorted.length - 1]
+    if (!selectedMessage?.conversationId) return
+    const conversationMessages = fullChatHistory.filter(msg => msg.conversationId === selectedMessage.conversationId)
+    const formattedMessages = conversationMessages.map(msg => ({
+      id: msg.id || Date.now() + Math.random(),
+      role: msg.role,
+      text: msg.text
+    }))
+    setMessages(formattedMessages)
+    setCurrentConversationId(selectedMessage.conversationId)
+    setSelectedHistoryIndex(historyIndex)
   }
 
 
@@ -339,7 +348,7 @@ function Chat() {
               }}
               title="Click to load this conversation"
               >
-                {item}
+                {typeof item === 'string' ? item : (item?.text || '(no prompt)')}
               </li>
             ))}
           </ul>
