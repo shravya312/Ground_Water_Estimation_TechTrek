@@ -11,3 +11,4 @@ rank_bm25
 google-generativeai
 huggingface-hub
 transformers
+flask-cors
