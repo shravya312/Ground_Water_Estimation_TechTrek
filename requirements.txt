@@ -5,10 +5,13 @@ numpy
 sentence-transformers
 scikit-learn
 streamlit
-dotenv
+python-dotenv
 qdrant-client
 rank_bm25
 google-generativeai
 huggingface-hub
 transformers
 flask-cors
+fastapi
+uvicorn
+torch
