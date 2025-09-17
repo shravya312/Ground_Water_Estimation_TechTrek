@@ -4,6 +4,7 @@ import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth, db } from '../firebase'
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { saveChatMessage, getUserChatHistory, clearChatHistory } from '../services/chatHistoryService'
+import MarkdownRenderer from '../components/MarkdownRenderer'
 
 function Chat() {
   const [messages, setMessages] = useState([
@@ -56,7 +57,7 @@ function Chat() {
     try {
       setSending(true)
       const apiBase = import.meta.env?.VITE_API_URL || ''
-      const res = await fetch(`${apiBase}/ask`, {
+      const res = await fetch(`${apiBase}/ask-formatted`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: trimmed })
@@ -375,7 +376,11 @@ function Chat() {
                   borderRadius: 12,
                   maxWidth: '75%'
                 }}>
-                  {m.text}
+                  {m.role === 'assistant' ? (
+                    <MarkdownRenderer content={m.text} />
+                  ) : (
+                    m.text
+                  )}
                 </div>
               </div>
             ))}

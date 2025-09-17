@@ -1,0 +1,4 @@
+# Additional requirements for multilingual support in app3.py
+langdetect==1.0.9
+googletrans==4.0.0rc1
+deep-translator==1.11.4

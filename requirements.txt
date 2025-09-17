@@ -15,3 +15,5 @@ flask-cors
 fastapi
 uvicorn
 torch
+IndicTransToolkit
+langdetect

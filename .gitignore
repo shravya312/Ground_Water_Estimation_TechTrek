@@ -10,6 +10,10 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+*.so
+*.dylib
+*.dll
+*.exe
 
 # --------------------
 # Virtual Environments
@@ -19,12 +23,21 @@ venv/
 env/
 ENV/
 virt/
+.conda/
+conda-meta/
 
 # --------------------
-# Environment Files
+# Environment Files & Secrets
 # --------------------
 .env
 *.env
+.env.local
+.env.development
+.env.production
+.env.test
+config.ini
+secrets.json
+api_keys.txt
 
 # --------------------
 # Data Files (local only, don't push to GitHub)
@@ -32,14 +45,38 @@ virt/
 *.csv
 *.tsv
 *.xlsx
+*.xls
 *.json
 *.db
 *.sqlite
+*.sqlite3
 datasets123/
-Ground_Water_Estimation_TechTrek/datasets123/
+datasets/
+data/
+raw_data/
+processed_data/
 master_groundwater_data.csv
 cleaned_groundwater_data.csv
-Ground_Water_Estimation_TechTrek/cleaned_groundwater_data.csv
+users.json
+chat_histories/
+*.log
+
+# --------------------
+# AI/ML Models & Cache
+# --------------------
+models/
+*.model
+*.pkl
+*.joblib
+*.h5
+*.hdf5
+*.pt
+*.pth
+*.bin
+.cache/
+transformers_cache/
+sentence_transformers_cache/
+qdrant_data/
 
 # --------------------
 # Streamlit
@@ -47,15 +84,93 @@ Ground_Water_Estimation_TechTrek/cleaned_groundwater_data.csv
 .streamlit/
 
 # --------------------
-# Node.js
+# Node.js & Frontend
 # --------------------
 node_modules/
 frontend/node_modules/
 package-lock.json
-package.json
+frontend/package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+frontend/dist/
+frontend/build/
+frontend/.vite/
 
 # --------------------
-# OS / Misc
+# IDE & Editor Files
+# --------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# --------------------
+# Testing & Coverage
+# --------------------
+.coverage
+.pytest_cache/
+.tox/
+htmlcov/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# --------------------
+# Jupyter Notebooks
+# --------------------
+.ipynb_checkpoints/
+*.ipynb
+
+# --------------------
+# OS & System Files
 # --------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
+*.tmp
+*.temp
+
+# --------------------
+# Logs & Debug Files
+# --------------------
+*.log
+logs/
+debug.log
+error.log
+access.log
+
+# --------------------
+# Temporary Files
+# --------------------
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*.rej
+
+# --------------------
+# Project Specific
+# --------------------
+test_*.py
+*_test.py
+debug_*.py
+temp_*.py
+*.pyc
+*.pyo
+*.pyd
