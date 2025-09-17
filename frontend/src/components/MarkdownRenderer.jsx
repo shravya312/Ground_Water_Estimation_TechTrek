@@ -47,26 +47,31 @@ const MarkdownRenderer = ({ content }) => {
           renderedElements.push(
             <div key={`table-${i}`} style={{ 
               overflowX: 'auto', 
-              margin: '1rem 0',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+              margin: '2rem 0',
+              border: '1px solid var(--color-border)',
+              borderRadius: '16px',
+              boxShadow: 'var(--shadow-lg)',
+              background: 'var(--color-surface)'
             }}>
               <table style={{
                 width: '100%',
                 borderCollapse: 'collapse',
                 fontSize: '0.9rem',
-                backgroundColor: 'white'
+                backgroundColor: 'var(--color-surface)'
               }}>
                 <thead>
-                  <tr style={{ backgroundColor: '#f8fafc' }}>
+                  <tr style={{ 
+                    background: 'var(--gradient-primary)',
+                    color: 'white'
+                  }}>
                     {headerCells.map((cell, idx) => (
                       <th key={idx} style={{
-                        padding: '0.75rem',
+                        padding: '18px 24px',
                         textAlign: 'left',
-                        borderBottom: '2px solid #e2e8f0',
-                        fontWeight: '600',
-                        color: '#374151'
+                        fontWeight: '700',
+                        fontSize: '0.95rem',
+                        letterSpacing: '0.025em',
+                        textTransform: 'uppercase'
                       }}>
                         {cell}
                       </th>
@@ -76,18 +81,22 @@ const MarkdownRenderer = ({ content }) => {
                 <tbody>
                   {dataRows.map((row, rowIdx) => (
                     <tr key={rowIdx} style={{
-                      backgroundColor: rowIdx % 2 === 0 ? 'white' : '#f8fafc'
+                      backgroundColor: rowIdx % 2 === 0 ? 'var(--color-surface)' : 'var(--color-surface-elevated)',
+                      transition: 'all 0.2s ease'
                     }}>
                       {row.map((cell, cellIdx) => (
                         <td key={cellIdx} style={{
-                          padding: '0.75rem',
-                          borderBottom: '1px solid #e2e8f0',
-                          color: '#4b5563'
+                          padding: '16px 24px',
+                          borderBottom: '1px solid var(--color-border)',
+                          color: 'var(--color-text-primary)',
+                          lineHeight: '1.6',
+                          fontWeight: '500'
                         }}>
                           {cell === 'No data available' ? (
                             <span style={{ 
-                              color: '#9ca3af', 
-                              fontStyle: 'italic' 
+                              color: 'var(--color-text-muted)', 
+                              fontStyle: 'italic',
+                              opacity: 0.7
                             }}>
                               No data available
                             </span>
@@ -115,10 +124,10 @@ const MarkdownRenderer = ({ content }) => {
         <h3 key={`h3-${i}`} style={{
           fontSize: '1.1rem',
           fontWeight: '600',
-          color: '#1f2937',
+          color: 'var(--color-text-primary)',
           margin: '1.5rem 0 0.75rem 0',
           paddingBottom: '0.5rem',
-          borderBottom: '2px solid #e5e7eb'
+          borderBottom: '2px solid var(--color-border)'
         }}>
           {line.substring(4)}
         </h3>
@@ -128,10 +137,10 @@ const MarkdownRenderer = ({ content }) => {
         <h2 key={`h2-${i}`} style={{
           fontSize: '1.25rem',
           fontWeight: '700',
-          color: '#111827',
+          color: 'var(--color-text-primary)',
           margin: '2rem 0 1rem 0',
           paddingBottom: '0.75rem',
-          borderBottom: '3px solid #3b82f6'
+          borderBottom: '3px solid var(--color-primary)'
         }}>
           {line.substring(3)}
         </h2>
@@ -141,10 +150,10 @@ const MarkdownRenderer = ({ content }) => {
         <h1 key={`h1-${i}`} style={{
           fontSize: '1.5rem',
           fontWeight: '800',
-          color: '#0f172a',
+          color: 'var(--color-text-primary)',
           margin: '2.5rem 0 1.25rem 0',
           paddingBottom: '1rem',
-          borderBottom: '4px solid #1e40af'
+          borderBottom: '4px solid var(--color-primary)'
         }}>
           {line.substring(2)}
         </h1>
@@ -164,10 +173,10 @@ const MarkdownRenderer = ({ content }) => {
             top: '0.5rem',
             width: '6px',
             height: '6px',
-            backgroundColor: '#3b82f6',
+            backgroundColor: 'var(--color-primary)',
             borderRadius: '50%'
           }}></span>
-          <span style={{ color: '#374151' }}>{bulletText}</span>
+          <span style={{ color: 'var(--color-text-primary)' }}>{bulletText}</span>
         </div>
       )
     } else if (line.startsWith('**') && line.endsWith('**')) {
@@ -175,7 +184,7 @@ const MarkdownRenderer = ({ content }) => {
       renderedElements.push(
         <div key={`bold-${i}`} style={{
           fontWeight: '600',
-          color: '#1f2937',
+          color: 'var(--color-text-primary)',
           margin: '0.5rem 0'
         }}>
           {line.substring(2, line.length - 2)}
@@ -187,7 +196,7 @@ const MarkdownRenderer = ({ content }) => {
         <hr key={`hr-${i}`} style={{
           border: 'none',
           height: '2px',
-          backgroundColor: '#e5e7eb',
+          backgroundColor: 'var(--color-border)',
           margin: '2rem 0'
         }} />
       )
@@ -197,7 +206,7 @@ const MarkdownRenderer = ({ content }) => {
         <p key={`p-${i}`} style={{
           margin: '0.75rem 0',
           lineHeight: '1.6',
-          color: '#374151'
+          color: 'var(--color-text-primary)'
         }}>
           {line}
         </p>
@@ -211,9 +220,9 @@ const MarkdownRenderer = ({ content }) => {
   }
 
   return (
-    <div style={{ 
+    <div className="markdown-content" style={{ 
       lineHeight: '1.6',
-      color: '#374151'
+      color: 'var(--color-text-primary) !important'
     }}>
       {renderedElements}
     </div>

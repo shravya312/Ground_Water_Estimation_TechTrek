@@ -5,6 +5,7 @@ import { auth, db } from '../firebase'
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { saveChatMessage, getUserChatHistory, clearChatHistory } from '../services/chatHistoryService'
 import MarkdownRenderer from '../components/MarkdownRenderer'
+import LanguageSelector from '../components/LanguageSelector'
 
 function Chat() {
   const [messages, setMessages] = useState([
@@ -17,6 +18,7 @@ function Chat() {
   const [fullChatHistory, setFullChatHistory] = useState([])
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(-1)
   const [currentConversationId, setCurrentConversationId] = useState(null)
+  const [selectedLanguage, setSelectedLanguage] = useState('en')
   const bottomRef = useRef(null)
 
   async function handleSend(e) {
@@ -60,7 +62,10 @@ function Chat() {
       const res = await fetch(`${apiBase}/ask-formatted`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: trimmed })
+        body: JSON.stringify({ 
+          query: trimmed,
+          language: selectedLanguage
+        })
       })
       let data
       try {
@@ -244,12 +249,22 @@ function Chat() {
     <div className="chat-root" style={{ display: 'flex', height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
       {/* History panel */}
       <aside className="chat-sidebar" style={{
-        width: 280,
-        background: 'linear-gradient(180deg, var(--color-taupe), var(--color-blue-gray))',
-        color: '#0f172a',
-        padding: '1rem',
-        overflowY: 'auto'
+        width: 320,
+        background: 'var(--gradient-surface)',
+        color: 'var(--color-text-primary)',
+        padding: '1.5rem',
+        overflowY: 'auto',
+        borderRight: '1px solid var(--color-border)',
+        boxShadow: 'var(--shadow-md)'
       }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+          <LanguageSelector 
+            selectedLanguage={selectedLanguage}
+            onLanguageChange={setSelectedLanguage}
+            className="sidebar-language-selector"
+          />
+        </div>
+        
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
           <h3 style={{ margin: 0 }}>Chat History</h3>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -357,11 +372,38 @@ function Chat() {
       </aside>
 
       {/* Chat area */}
-      <main className="chat-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--color-cream)' }}>
-        <header className="glass" style={{ padding: '1rem 1.25rem', margin: '1rem', borderRadius: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <h2 style={{ margin: 0, color: 'var(--color-slate)' }}>Chatbot</h2>
-            <button onClick={() => signOut(auth)} style={{ borderRadius: 8 }}>Sign out</button>
+      <main className="chat-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--color-background)' }}>
+        <header className="glass" style={{ padding: '1.5rem 2rem', margin: '1.5rem', borderRadius: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                background: 'var(--gradient-primary)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'white',
+                fontSize: '1.2rem',
+                fontWeight: '600'
+              }}>
+                💧
+              </div>
+              <h2 style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: '1.5rem', fontWeight: '700' }}>Groundwater Assistant</h2>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <LanguageSelector 
+                selectedLanguage={selectedLanguage}
+                onLanguageChange={setSelectedLanguage}
+                className="header-language-selector"
+              />
+              <button onClick={() => signOut(auth)} style={{ 
+                padding: '0.75rem 1.5rem',
+                fontSize: '0.9rem',
+                background: 'var(--gradient-secondary)'
+              }}>Sign out</button>
+            </div>
           </div>
         </header>
 
@@ -370,11 +412,19 @@ function Chat() {
             {messages.map(m => (
               <div key={m.id} className="fade-in-up" style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', margin: '0.5rem 0' }}>
                 <div className="glass" style={{
-                  background: m.role === 'user' ? 'rgba(153,176,176,0.25)' : 'rgba(252,250,240,0.8)',
-                  color: '#0f172a',
-                  padding: '0.75rem 1rem',
-                  borderRadius: 12,
-                  maxWidth: '75%'
+                  background: m.role === 'user' 
+                    ? 'var(--gradient-primary)' 
+                    : 'var(--color-surface)',
+                  color: m.role === 'user' ? 'white' : 'var(--color-text-primary)',
+                  padding: '1.25rem 1.5rem',
+                  borderRadius: 20,
+                  maxWidth: '80%',
+                  border: m.role === 'user' ? 'none' : '1px solid var(--color-border)',
+                  boxShadow: m.role === 'user' 
+                    ? 'var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.2)' 
+                    : 'var(--shadow-md)',
+                  position: 'relative',
+                  marginBottom: '1rem'
                 }}>
                   {m.role === 'assistant' ? (
                     <MarkdownRenderer content={m.text} />
@@ -388,21 +438,56 @@ function Chat() {
           </div>
         </div>
 
-        <form onSubmit={handleSend} className="pulse-focus" style={{ padding: '1rem' }}>
-          <div className="glass chat-input" style={{ display: 'flex', gap: 8, maxWidth: 860, margin: '0 auto', padding: 8 }}>
+        <form onSubmit={handleSend} className="pulse-focus" style={{ padding: '1.5rem' }}>
+          <div className="glass chat-input" style={{ 
+            display: 'flex', 
+            gap: 16, 
+            maxWidth: 900, 
+            margin: '0 auto', 
+            padding: 20,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            boxShadow: 'var(--shadow-lg)',
+            borderRadius: 24
+          }}>
             <input
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder="Type your message..."
+              placeholder="Ask about groundwater data..."
               style={{
                 flex: 1,
-                border: '1px solid rgba(138,158,160,0.4)',
-                padding: '0.8rem 1rem',
-                borderRadius: 10,
-                background: 'rgba(252,250,240,0.9)'
+                border: '1px solid var(--color-border)',
+                padding: '1rem 1.25rem',
+                borderRadius: 16,
+                background: 'var(--color-surface-elevated)',
+                fontSize: '1rem',
+                color: 'var(--color-text-primary)',
+                outline: 'none',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                fontWeight: '500'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = 'var(--color-primary)';
+                e.target.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.2)';
+                e.target.style.background = 'var(--color-surface)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = 'var(--color-border)';
+                e.target.style.boxShadow = 'none';
+                e.target.style.background = 'var(--color-surface-elevated)';
               }}
             />
-            <button type="submit" className="chat-send" disabled={sending} style={{ borderRadius: 10 }}>
+            <button 
+              type="submit" 
+              className="chat-send" 
+              disabled={sending} 
+              style={{ 
+                borderRadius: 12,
+                padding: '0.875rem 1.5rem',
+                fontSize: '1rem',
+                fontWeight: '600'
+              }}
+            >
               {sending ? 'Sending…' : 'Send'}
             </button>
           </div>

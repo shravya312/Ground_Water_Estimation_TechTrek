@@ -69,7 +69,12 @@ function Landing() {
 
       {/* Hero */}
       <section className="landing-hero">
-        <div className="hero-grid glass fade-in-up">
+        <div className="hero-grid glass fade-in-up" style={{
+          background: 'var(--gradient-surface)',
+          border: '1px solid var(--color-border)',
+          boxShadow: 'var(--shadow-2xl)',
+          borderRadius: 24
+        }}>
           <div className="hero-copy">
             <h1 className="landing-title">Smarter Groundwater Insights</h1>
             <p className="landing-sub">Ask questions, analyze datasets, and get guidance for groundwater estimation.</p>
@@ -77,15 +82,33 @@ function Landing() {
               <button onClick={handleGoogleSignIn} className="btn-primary">Sign in with Google</button>
             </div>
             <div className="hero-stats">
-              <div className="stat">
+              <div className="stat" style={{
+                background: 'var(--gradient-primary)',
+                color: 'white',
+                border: 'none',
+                boxShadow: 'var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.2)',
+                borderRadius: 16
+              }}>
                 <div className="stat-value">10k+</div>
                 <div className="stat-label">Queries answered</div>
               </div>
-              <div className="stat">
+              <div className="stat" style={{
+                background: 'var(--gradient-secondary)',
+                color: 'white',
+                border: 'none',
+                boxShadow: 'var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.2)',
+                borderRadius: 16
+              }}>
                 <div className="stat-value">99.9%</div>
                 <div className="stat-label">Uptime</div>
               </div>
-              <div className="stat">
+              <div className="stat" style={{
+                background: 'var(--gradient-accent)',
+                color: 'white',
+                border: 'none',
+                boxShadow: 'var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.2)',
+                borderRadius: 16
+              }}>
                 <div className="stat-value">AI</div>
                 <div className="stat-label">Powered analysis</div>
               </div>

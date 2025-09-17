@@ -1,4 +1,4 @@
-# 📋 Updated .gitignore Summary
+image.png# 📋 Updated .gitignore Summary
 
 ## ✅ **What's Now Included in .gitignore**
 
