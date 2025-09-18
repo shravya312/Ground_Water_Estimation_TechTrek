@@ -1,6 +1,6 @@
 # 🌊 Groundwater Estimation TechTrek - SIH Project
 
-An AI-powered web application for groundwater analysis and visualization across India using RAG technology, interactive visualizations, and location-based analysis.
+An AI-powered web application for groundwater analysis and visualization across India using RAG techniques interactive visualizations, and location-based analysis.
 
 ## 🚀 Quick Start
 
