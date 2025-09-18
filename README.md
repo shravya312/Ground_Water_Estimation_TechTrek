@@ -34,9 +34,6 @@ pip install -r requirements.txt
 # QDRANT_API_KEY=your-qdrant-api-key
 # GEMINI_API_KEY=your-gemini-api-key
 
-# Prepare data
-python excel_parser.py
-python excel_ingestor.py
 ```
 
 ### 3. Frontend Setup
