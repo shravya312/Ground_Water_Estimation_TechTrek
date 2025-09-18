@@ -51,7 +51,7 @@ npm install
 ### Terminal 1: Start Backend
 ```bash
 cd Ground_Water_Estimation_TechTrek
-python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --port 8000
 ```
 
 ### Terminal 2: Start Frontend
