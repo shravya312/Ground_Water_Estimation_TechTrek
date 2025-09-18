@@ -23,6 +23,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from IndicTransToolkit.processor import IndicProcessor
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import plotly.figure_factory as ff
 # Lazy imports for translators to avoid hard dependency issues at import time
 try:
     from googletrans import Translator as GoogleTransTranslator
@@ -1122,7 +1126,627 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     
     return answer
 
+# --- Visualization Functions ---
+def create_groundwater_overview_dashboard(df):
+    """Create a comprehensive overview dashboard of groundwater data."""
+    if df is None or df.empty:
+        return None
+    
+    # Create subplots
+    fig = make_subplots(
+        rows=3, cols=2,
+        subplot_titles=[
+            'Groundwater Extraction by State (Top 10)',
+            'Annual Groundwater Recharge Trends',
+            'Stage of Groundwater Extraction Distribution',
+            'Rainfall vs Groundwater Recharge Correlation',
+            'District-wise Groundwater Availability',
+            'Year-wise Data Coverage'
+        ],
+        specs=[
+            [{"type": "bar"}, {"type": "scatter"}],
+            [{"type": "histogram"}, {"type": "scatter"}],
+            [{"type": "bar"}, {"type": "bar"}]
+        ]
+    )
+    
+    # 1. Groundwater Extraction by State (Top 10)
+    if 'Ground Water Extraction for all uses (ha.m) - Total - Total' in df.columns:
+        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
+        state_extraction = df.groupby('STATE')[extraction_col].sum().sort_values(ascending=False).head(10)
+        
+        fig.add_trace(
+            go.Bar(
+                x=state_extraction.index,
+                y=state_extraction.values,
+                name="Groundwater Extraction",
+                marker_color='lightblue'
+            ),
+            row=1, col=1
+        )
+    
+    # 2. Annual Groundwater Recharge Trends
+    if 'Annual Ground water Recharge (ham) - Total - Total' in df.columns:
+        recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
+        yearly_recharge = df.groupby('Assessment_Year')[recharge_col].mean().reset_index()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=yearly_recharge['Assessment_Year'],
+                y=yearly_recharge[recharge_col],
+                mode='lines+markers',
+                name="Annual Recharge",
+                line=dict(color='green', width=3)
+            ),
+            row=1, col=2
+        )
+    
+    # 3. Stage of Groundwater Extraction Distribution
+    if 'Stage of Ground Water Extraction (%) - Total - Total' in df.columns:
+        stage_col = 'Stage of Ground Water Extraction (%) - Total - Total'
+        stage_data = df[stage_col].dropna()
+        
+        fig.add_trace(
+            go.Histogram(
+                x=stage_data,
+                nbinsx=20,
+                name="Extraction Stage %",
+                marker_color='orange'
+            ),
+            row=2, col=1
+        )
+    
+    # 4. Rainfall vs Groundwater Recharge Correlation
+    if 'Rainfall (mm) - Total - Total' in df.columns and 'Annual Ground water Recharge (ham) - Total - Total' in df.columns:
+        rainfall_col = 'Rainfall (mm) - Total - Total'
+        recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
+        
+        # Sample data for correlation plot
+        sample_data = df[[rainfall_col, recharge_col]].dropna().sample(n=min(1000, len(df)))
+        
+        fig.add_trace(
+            go.Scatter(
+                x=sample_data[rainfall_col],
+                y=sample_data[recharge_col],
+                mode='markers',
+                name="Rainfall vs Recharge",
+                marker=dict(color='purple', size=4, opacity=0.6)
+            ),
+            row=2, col=2
+        )
+    
+    # 5. District-wise Groundwater Availability (Top 15)
+    if 'Annual Extractable Ground water Resource (ham) - Total - Total' in df.columns:
+        resource_col = 'Annual Extractable Ground water Resource (ham) - Total - Total'
+        district_resource = df.groupby('DISTRICT')[resource_col].sum().sort_values(ascending=False).head(15)
+        
+        fig.add_trace(
+            go.Bar(
+                x=district_resource.values,
+                y=district_resource.index,
+                orientation='h',
+                name="Groundwater Resource",
+                marker_color='lightgreen'
+            ),
+            row=3, col=1
+        )
+    
+    # 6. Year-wise Data Coverage
+    yearly_counts = df['Assessment_Year'].value_counts().sort_index()
+    
+    fig.add_trace(
+        go.Bar(
+            x=yearly_counts.index,
+            y=yearly_counts.values,
+            name="Data Records",
+            marker_color='lightcoral'
+        ),
+        row=3, col=2
+    )
+    
+    # Update layout with white text for dark theme
+    fig.update_layout(
+        height=1200,
+        title_text="Groundwater Data Analysis Dashboard",
+        title_x=0.5,
+        showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        title_font=dict(color='white'),
+        xaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)'),
+        yaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)')
+    )
+    
+    return fig
+
+def create_state_analysis_plots(df, selected_state=None):
+    """Create detailed analysis plots for a specific state or all states."""
+    if df is None or df.empty:
+        return None
+    
+    # Filter data for selected state if provided
+    if selected_state:
+        state_df = df[df['STATE'] == selected_state]
+        title_suffix = f" - {selected_state}"
+    else:
+        state_df = df
+        title_suffix = " - All States"
+    
+    if state_df.empty:
+        return None
+    
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=[
+            f'Groundwater Extraction by District{title_suffix}',
+            f'Rainfall Distribution{title_suffix}',
+            f'Recharge vs Extraction Scatter{title_suffix}',
+            f'Quality Tagging Analysis{title_suffix}'
+        ],
+        specs=[
+            [{"type": "bar"}, {"type": "box"}],
+            [{"type": "scatter"}, {"type": "pie"}]
+        ]
+    )
+    
+    # 1. Groundwater Extraction by District
+    if 'Ground Water Extraction for all uses (ha.m) - Total - Total' in state_df.columns:
+        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
+        district_extraction = state_df.groupby('DISTRICT')[extraction_col].sum().sort_values(ascending=False).head(10)
+        
+        fig.add_trace(
+            go.Bar(
+                x=district_extraction.index,
+                y=district_extraction.values,
+                name="Extraction by District",
+                marker_color='skyblue'
+            ),
+            row=1, col=1
+        )
+    
+    # 2. Rainfall Distribution
+    if 'Rainfall (mm) - Total - Total' in state_df.columns:
+        rainfall_col = 'Rainfall (mm) - Total - Total'
+        rainfall_data = state_df[rainfall_col].dropna()
+        
+        fig.add_trace(
+            go.Box(
+                y=rainfall_data,
+                name="Rainfall Distribution",
+                marker_color='lightgreen'
+            ),
+            row=1, col=2
+        )
+    
+    # 3. Recharge vs Extraction Scatter
+    if ('Annual Ground water Recharge (ham) - Total - Total' in state_df.columns and 
+        'Ground Water Extraction for all uses (ha.m) - Total - Total' in state_df.columns):
+        recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
+        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
+        
+        scatter_data = state_df[[recharge_col, extraction_col]].dropna()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=scatter_data[recharge_col],
+                y=scatter_data[extraction_col],
+                mode='markers',
+                name="Recharge vs Extraction",
+                marker=dict(
+                    color=scatter_data[recharge_col],
+                    size=8,
+                    opacity=0.7,
+                    colorscale='Viridis',
+                    showscale=True
+                ),
+                text=scatter_data.index
+            ),
+            row=2, col=1
+        )
+    
+    # 4. Quality Tagging Analysis
+    if 'Quality Tagging' in state_df.columns:
+        quality_data = state_df['Quality Tagging'].value_counts()
+        
+        fig.add_trace(
+            go.Pie(
+                labels=quality_data.index,
+                values=quality_data.values,
+                name="Quality Distribution"
+            ),
+            row=2, col=2
+        )
+    
+    # Update layout with white text for dark theme
+    fig.update_layout(
+        height=800,
+        title_text=f"Detailed State Analysis{title_suffix}",
+        title_x=0.5,
+        showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        title_font=dict(color='white'),
+        xaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)'),
+        yaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)')
+    )
+    
+    return fig
+
+def create_temporal_analysis_plots(df):
+    """Create temporal analysis plots showing trends over time."""
+    if df is None or df.empty:
+        return None
+    
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=[
+            'Groundwater Recharge Trends by Year',
+            'Extraction Trends by Year',
+            'Stage of Extraction Over Time',
+            'Resource Availability Trends'
+        ],
+        specs=[
+            [{"type": "scatter"}, {"type": "scatter"}],
+            [{"type": "scatter"}, {"type": "scatter"}]
+        ]
+    )
+    
+    # 1. Groundwater Recharge Trends
+    if 'Annual Ground water Recharge (ham) - Total - Total' in df.columns:
+        recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
+        yearly_recharge = df.groupby('Assessment_Year')[recharge_col].agg(['mean', 'std']).reset_index()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=yearly_recharge['Assessment_Year'],
+                y=yearly_recharge['mean'],
+                mode='lines+markers',
+                name="Mean Recharge",
+                line=dict(color='blue', width=3),
+                error_y=dict(type='data', array=yearly_recharge['std'])
+            ),
+            row=1, col=1
+        )
+    
+    # 2. Extraction Trends
+    if 'Ground Water Extraction for all uses (ha.m) - Total - Total' in df.columns:
+        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
+        yearly_extraction = df.groupby('Assessment_Year')[extraction_col].agg(['mean', 'std']).reset_index()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=yearly_extraction['Assessment_Year'],
+                y=yearly_extraction['mean'],
+                mode='lines+markers',
+                name="Mean Extraction",
+                line=dict(color='red', width=3),
+                error_y=dict(type='data', array=yearly_extraction['std'])
+            ),
+            row=1, col=2
+        )
+    
+    # 3. Stage of Extraction Over Time
+    if 'Stage of Ground Water Extraction (%) - Total - Total' in df.columns:
+        stage_col = 'Stage of Ground Water Extraction (%) - Total - Total'
+        yearly_stage = df.groupby('Assessment_Year')[stage_col].mean().reset_index()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=yearly_stage['Assessment_Year'],
+                y=yearly_stage[stage_col],
+                mode='lines+markers',
+                name="Extraction Stage %",
+                line=dict(color='orange', width=3)
+            ),
+            row=2, col=1
+        )
+    
+    # 4. Resource Availability Trends
+    if 'Annual Extractable Ground water Resource (ham) - Total - Total' in df.columns:
+        resource_col = 'Annual Extractable Ground water Resource (ham) - Total - Total'
+        yearly_resource = df.groupby('Assessment_Year')[resource_col].mean().reset_index()
+        
+        fig.add_trace(
+            go.Scatter(
+                x=yearly_resource['Assessment_Year'],
+                y=yearly_resource[resource_col],
+                mode='lines+markers',
+                name="Available Resource",
+                line=dict(color='green', width=3)
+            ),
+            row=2, col=2
+        )
+    
+    # Update layout with white text for dark theme
+    fig.update_layout(
+        height=800,
+        title_text="Temporal Analysis - Groundwater Trends Over Time",
+        title_x=0.5,
+        showlegend=True,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        title_font=dict(color='white'),
+        xaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)'),
+        yaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)')
+    )
+    
+    return fig
+
+def create_geographical_heatmap(df, metric='Annual Ground water Recharge (ham) - Total - Total'):
+    """Create a geographical heatmap of groundwater metrics by state."""
+    if df is None or df.empty or metric not in df.columns:
+        return None
+    
+    # Aggregate data by state
+    state_metrics = df.groupby('STATE')[metric].mean().reset_index()
+    
+    # Create a simple bar chart as heatmap (since we don't have actual coordinates)
+    fig = go.Figure(data=[
+        go.Bar(
+            x=state_metrics['STATE'],
+            y=state_metrics[metric],
+            marker=dict(
+                color=state_metrics[metric],
+                colorscale='Viridis',
+                showscale=True,
+                colorbar=dict(title=metric)
+            )
+        )
+    ])
+    
+    fig.update_layout(
+        title=f"Geographical Distribution of {metric}",
+        xaxis_title="State",
+        yaxis_title=metric,
+        height=600,
+        xaxis_tickangle=-45,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        title_font=dict(color='white'),
+        xaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)'),
+        yaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)')
+    )
+    
+    return fig
+
+def create_correlation_matrix_plot(df):
+    """Create a correlation matrix heatmap of numerical groundwater parameters."""
+    if df is None or df.empty:
+        return None
+    
+    # Select numerical columns
+    numerical_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    
+    # Remove columns with too many NaN values
+    numerical_cols = [col for col in numerical_cols if df[col].notna().sum() > len(df) * 0.1]
+    
+    if len(numerical_cols) < 2:
+        return None
+    
+    # Calculate correlation matrix
+    corr_matrix = df[numerical_cols].corr()
+    
+    # Create heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=corr_matrix.values,
+        x=corr_matrix.columns,
+        y=corr_matrix.columns,
+        colorscale='RdBu',
+        zmid=0,
+        text=np.round(corr_matrix.values, 2),
+        texttemplate="%{text}",
+        textfont={"size": 10}
+    ))
+    
+    fig.update_layout(
+        title="Correlation Matrix of Groundwater Parameters",
+        height=600,
+        xaxis_tickangle=-45,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        title_font=dict(color='white'),
+        xaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)'),
+        yaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)')
+    )
+    
+    return fig
+
+def create_statistical_summary_plots(df):
+    """Create statistical summary plots including distribution and box plots."""
+    if df is None or df.empty:
+        return None
+    
+    # Select key numerical columns
+    key_columns = [
+        'Annual Ground water Recharge (ham) - Total - Total',
+        'Ground Water Extraction for all uses (ha.m) - Total - Total',
+        'Stage of Ground Water Extraction (%) - Total - Total',
+        'Rainfall (mm) - Total - Total'
+    ]
+    
+    available_columns = [col for col in key_columns if col in df.columns]
+    
+    if not available_columns:
+        return None
+    
+    # Create subplots
+    fig = make_subplots(
+        rows=2, cols=2,
+        subplot_titles=[f'{col} Distribution' for col in available_columns[:4]]
+    )
+    
+    for i, col in enumerate(available_columns[:4]):
+        row = (i // 2) + 1
+        col_idx = (i % 2) + 1
+        
+        data = df[col].dropna()
+        
+        # Create histogram
+        fig.add_trace(
+            go.Histogram(
+                x=data,
+                nbinsx=30,
+                name=col,
+                opacity=0.7
+            ),
+            row=row, col=col_idx
+        )
+    
+    fig.update_layout(
+        height=800,
+        title_text="Statistical Distribution of Key Groundwater Parameters",
+        title_x=0.5,
+        showlegend=False,
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='white'),
+        title_font=dict(color='white'),
+        xaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)'),
+        yaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)')
+    )
+    
+    return fig
+
 # --- FastAPI Endpoints ---
+
+# Visualization Endpoints
+@app.get("/visualizations/overview")
+async def get_overview_dashboard():
+    """Get comprehensive overview dashboard of groundwater data."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_groundwater_overview_dashboard(_master_df)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create dashboard")
+        
+        return {"plot_json": fig.to_json(), "success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/state-analysis")
+async def get_state_analysis(state: Optional[str] = None):
+    """Get detailed state analysis plots."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_state_analysis_plots(_master_df, state)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create state analysis")
+        
+        return {"plot_json": fig.to_json(), "success": True, "state": state}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/temporal-analysis")
+async def get_temporal_analysis():
+    """Get temporal analysis plots showing trends over time."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_temporal_analysis_plots(_master_df)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create temporal analysis")
+        
+        return {"plot_json": fig.to_json(), "success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/geographical-heatmap")
+async def get_geographical_heatmap(metric: str = 'Annual Ground water Recharge (ham) - Total - Total'):
+    """Get geographical heatmap of groundwater metrics by state."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_geographical_heatmap(_master_df, metric)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create geographical heatmap")
+        
+        return {"plot_json": fig.to_json(), "success": True, "metric": metric}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/correlation-matrix")
+async def get_correlation_matrix():
+    """Get correlation matrix heatmap of numerical groundwater parameters."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_correlation_matrix_plot(_master_df)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create correlation matrix")
+        
+        return {"plot_json": fig.to_json(), "success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/statistical-summary")
+async def get_statistical_summary():
+    """Get statistical summary plots including distribution and box plots."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_statistical_summary_plots(_master_df)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create statistical summary")
+        
+        return {"plot_json": fig.to_json(), "success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/available-metrics")
+async def get_available_metrics():
+    """Get list of available metrics for geographical heatmap."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        numerical_cols = _master_df.select_dtypes(include=[np.number]).columns.tolist()
+        key_metrics = [
+            'Annual Ground water Recharge (ham) - Total - Total',
+            'Ground Water Extraction for all uses (ha.m) - Total - Total',
+            'Stage of Ground Water Extraction (%) - Total - Total',
+            'Rainfall (mm) - Total - Total'
+        ]
+        available_metrics = [col for col in key_metrics if col in numerical_cols]
+        
+        return {"metrics": available_metrics, "success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/available-states")
+async def get_available_states():
+    """Get list of available states for state analysis."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        available_states = sorted([s for s in _master_df['STATE'].unique() if pd.notna(s)])
+        return {"states": available_states, "success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/ask")
 async def ask(request: AskRequest):
     """Main endpoint for asking questions about groundwater data."""
@@ -1280,6 +1904,125 @@ async def ask_formatted(request: AskRequest):
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+# --- Visualization API Endpoints ---
+@app.get("/visualizations/overview-dashboard")
+async def get_overview_dashboard():
+    """Get comprehensive overview dashboard visualization."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_groundwater_overview_dashboard(_master_df)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create dashboard")
+        
+        return {
+            "success": True,
+            "plot_json": fig.to_json(),
+            "message": "Overview dashboard generated successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/state-analysis")
+async def get_state_analysis(state: Optional[str] = None):
+    """Get detailed state analysis visualization."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_state_analysis_plots(_master_df, state)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create state analysis")
+        
+        return {
+            "success": True,
+            "plot_json": fig.to_json(),
+            "state": state or "All States",
+            "message": "State analysis generated successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/temporal-analysis")
+async def get_temporal_analysis():
+    """Get temporal analysis visualization showing trends over time."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_temporal_analysis_plots(_master_df)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create temporal analysis")
+        
+        return {
+            "success": True,
+            "plot_json": fig.to_json(),
+            "message": "Temporal analysis generated successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/correlation-matrix")
+async def get_correlation_matrix():
+    """Get correlation matrix visualization of groundwater parameters."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_correlation_matrix_plot(_master_df)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create correlation matrix")
+        
+        return {
+            "success": True,
+            "plot_json": fig.to_json(),
+            "message": "Correlation matrix generated successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/statistical-summary")
+async def get_statistical_summary():
+    """Get statistical summary visualization of key parameters."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        fig = create_statistical_summary_plots(_master_df)
+        if fig is None:
+            raise HTTPException(status_code=500, detail="Unable to create statistical summary")
+        
+        return {
+            "success": True,
+            "plot_json": fig.to_json(),
+            "message": "Statistical summary generated successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/visualizations/available-states")
+async def get_available_states():
+    """Get list of available states for state analysis."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        available_states = sorted([s for s in _master_df['STATE'].unique() if pd.notna(s)])
+        return {
+            "success": True,
+            "states": available_states,
+            "count": len(available_states)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health_check():

@@ -18,10 +18,6 @@ import torch
 import json
 from typing import List, Dict, Optional
 from langdetect import detect_langs, LangDetectException
-import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import plotly.figure_factory as ff
 # Lazy imports for translators to avoid hard dependency issues at import time
 try:
     from googletrans import Translator as GoogleTransTranslator
@@ -182,7 +178,7 @@ except Exception as e:
     st.stop()
 
 # --- Constants ---
-COLLECTION_NAME = "groundwater_excel_collection"
+COLLECTION_NAME = "ingris_groundwater_collection"  # Changed for INGRIS data
 VECTOR_SIZE = 384
 MIN_SIMILARITY_SCORE = 0.5
 
@@ -348,24 +344,24 @@ def translate_answer_to_language(answer: str, target_lang: str) -> str:
         return answer
     return translate_text(answer, target_lang, 'en')
 
-
-# --- Core Functions (Adapted for Excel Data) ---
+# --- Core Functions (Adapted for INGRIS Data) ---
 @st.cache_data(show_spinner=False)
 def load_master_dataframe():
     global master_df
     if master_df is None:
         try:
-            master_df = pd.read_csv("master_groundwater_data.csv", low_memory=False)
-            master_df['STATE'] = master_df['STATE'].fillna('').astype(str)
-            master_df['DISTRICT'] = master_df['DISTRICT'].fillna('').astype(str)
-            master_df['ASSESSMENT UNIT'] = master_df['ASSESSMENT UNIT'].fillna('').astype(str)
+            # Load INGRIS data instead of master_groundwater_data.csv
+            master_df = pd.read_csv("ingris_rag_ready.csv", low_memory=False)
+            master_df['state'] = master_df['state'].fillna('').astype(str)
+            master_df['district'] = master_df['district'].fillna('').astype(str)
+            master_df['assessment_unit'] = master_df['assessment_unit'].fillna('').astype(str)
             master_df['combined_text'] = master_df.apply(create_detailed_combined_text, axis=1)
-            st.success("Master groundwater data loaded.")
+            st.success("INGRIS groundwater data loaded.")
         except FileNotFoundError:
-            st.error("Error: master_groundwater_data.csv not found. Please run excel_ingestor.py first.")
+            st.error("Error: ingris_rag_ready.csv not found. Please run excel_to_csv_extractor.py first.")
             st.stop()
         except Exception as e:
-            st.error(f"Error loading master groundwater data: {str(e)}")
+            st.error(f"Error loading INGRIS groundwater data: {str(e)}")
             st.stop()
     return master_df
 
@@ -373,7 +369,7 @@ def create_detailed_combined_text(row):
     """Generates a detailed combined text string for a DataFrame row."""
     parts = []
     for col, value in row.items():
-        if pd.notna(value) and value != '' and col not in ['S.No']:
+        if pd.notna(value) and value != '' and col not in ['serial_number']:
             parts.append(f"{col}: {value}")
     return " | ".join(parts)
 
@@ -461,10 +457,10 @@ def setup_collection():
         else:
             st.info(f"Using existing collection: {COLLECTION_NAME}")
         
-        # Create indexes
-        for field_name, field_type in [("Assessment_Year", PayloadSchemaType.INTEGER), 
-                                      ("STATE", PayloadSchemaType.KEYWORD),
-                                      ("DISTRICT", PayloadSchemaType.KEYWORD)]:
+        # Create indexes for INGRIS data columns
+        for field_name, field_type in [("year", PayloadSchemaType.INTEGER), 
+                                      ("state", PayloadSchemaType.KEYWORD),
+                                      ("district", PayloadSchemaType.KEYWORD)]:
             try:
                 qdrant_client.create_payload_index(
                     collection_name=COLLECTION_NAME,
@@ -480,7 +476,7 @@ def setup_collection():
         return False
 
 def check_excel_embeddings_exist():
-    """Check if embeddings for master_groundwater_data.csv exist in Qdrant by counting points"""
+    """Check if embeddings for INGRIS data exist in Qdrant by counting points"""
     try:
         collection_info = qdrant_client.get_collection(collection_name=COLLECTION_NAME)
         return collection_info.points_count > 0
@@ -500,7 +496,7 @@ def clear_all_embeddings():
         st.error(f"Error clearing embeddings: {e}")
 
 def upload_excel_to_qdrant(df_to_upload, batch_size=1000):
-    """Upload Excel DataFrame rows to Qdrant in batches"""
+    """Upload INGRIS DataFrame rows to Qdrant in batches"""
     if df_to_upload.empty:
         return False
     
@@ -508,7 +504,7 @@ def upload_excel_to_qdrant(df_to_upload, batch_size=1000):
         texts = df_to_upload['combined_text'].tolist()
         embeddings = get_embeddings(texts)
         if not is_valid_embeddings(embeddings):
-            st.error("Failed to generate embeddings for Excel data.")
+            st.error("Failed to generate embeddings for INGRIS data.")
             return False
         
         total_uploaded = 0
@@ -538,10 +534,10 @@ def upload_excel_to_qdrant(df_to_upload, batch_size=1000):
             total_uploaded += len(points)
             st.write(f"Uploaded {total_uploaded}/{len(df_to_upload)} records...")
         
-        st.success(f"✅ All {total_uploaded} Excel rows uploaded to Qdrant.")
+        st.success(f"✅ All {total_uploaded} INGRIS rows uploaded to Qdrant.")
         return True
     except Exception as e:
-        st.error(f"Error uploading Excel data to Qdrant: {str(e)}")
+        st.error(f"Error uploading INGRIS data to Qdrant: {str(e)}")
         return False
 
 def load_all_excel_chunks_for_bm25(df_for_bm25=None):
@@ -569,22 +565,22 @@ def load_all_excel_chunks_for_bm25(df_for_bm25=None):
         tokenized_all_chunks = [tokenize_text(chunk) for chunk in all_chunks]
         st.session_state.bm25_model = BM25Okapi(tokenized_all_chunks)
         st.session_state.all_chunks = all_chunks
-        st.info("BM25 model initialized with all Excel chunks.")
+        st.info("BM25 model initialized with all INGRIS chunks.")
     else:
         st.session_state.bm25_model = None
         st.session_state.all_chunks = []
         st.session_state.bm25_df = pd.DataFrame(columns=master_df.columns if master_df is not None else [])
-        st.info("No Excel data found in Qdrant or DataFrame for BM25 initialization. Initialized with empty data.")
+        st.info("No INGRIS data found in Qdrant or DataFrame for BM25 initialization. Initialized with empty data.")
 
 @st.cache_data(show_spinner=False)
 def search_excel_chunks(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
-    """Retrieve most relevant Excel data rows using hybrid search, with optional year and location filtering."""
+    """Retrieve most relevant INGRIS data rows using hybrid search, with optional year and location filtering."""
     qdrant_filter_conditions = []
 
     if year:
         qdrant_filter_conditions.append(
             FieldCondition(
-                key="Assessment_Year",
+                key="year",
                 match=MatchValue(value=year)
             )
         )
@@ -592,7 +588,7 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
     if target_state:
         qdrant_filter_conditions.append(
             FieldCondition(
-                key="STATE",
+                key="state",
                 match=MatchValue(value=target_state)
             )
         )
@@ -600,7 +596,7 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
     if target_district:
         qdrant_filter_conditions.append(
             FieldCondition(
-                key="DISTRICT",
+                key="district",
                 match=MatchValue(value=target_district)
             )
         )
@@ -645,9 +641,9 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
             for i, score in enumerate(bm25_scores):
                 if score > 0:
                     chunk_text_bm25 = all_bm25_chunks[i]
-                    if (year and bm25_df_full.iloc[i]['Assessment_Year'] != year) or \
-                       (target_state and bm25_df_full.iloc[i]['STATE'] != target_state) or \
-                       (target_district and bm25_df_full.iloc[i]['DISTRICT'] != target_district):
+                    if (year and bm25_df_full.iloc[i]['year'] != year) or \
+                       (target_state and bm25_df_full.iloc[i]['state'] != target_state) or \
+                       (target_district and bm25_df_full.iloc[i]['district'] != target_district):
                         continue
                     sparse_hits[chunk_text_bm25] = score
         
@@ -743,46 +739,46 @@ def expand_query(query, num_terms=3):
         return ""
 
 def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None, chat_history=None, extracted_parameters=None, user_language='en'):
-    """Use Gemini to answer the question based on structured Excel data with multilingual support."""
+    """Use Gemini to answer the question based on structured INGRIS data with multilingual support."""
     if not query or not context_data:
         return "Please provide both a question and relevant data context."
     
     # Format structured data into a readable string for the LLM
     data_summary = []
     for i, item in enumerate(context_data, 1):
-        data_summary.append(f"=== DATA ENTRY {i} ===")
-        data_summary.append(f"State: {item.get('STATE', 'N/A')}")
-        data_summary.append(f"District: {item.get('DISTRICT', 'N/A')}")
-        data_summary.append(f"Assessment Unit: {item.get('ASSESSMENT UNIT', 'N/A')}")
-        data_summary.append(f"Assessment Year: {item.get('Assessment_Year', 'N/A')}")
-        data_summary.append(f"Serial Number: {item.get('S.No', 'N/A')}")
+        data_summary.append(f"=== INGRIS DATA ENTRY {i} ===")
+        data_summary.append(f"State: {item.get('state', 'N/A')}")
+        data_summary.append(f"District: {item.get('district', 'N/A')}")
+        data_summary.append(f"Assessment Unit: {item.get('assessment_unit', 'N/A')}")
+        data_summary.append(f"Year: {item.get('year', 'N/A')}")
+        data_summary.append(f"Serial Number: {item.get('serial_number', 'N/A')}")
         data_summary.append("")
         
         # Group columns by category for better organization
         categories = {
-            "RAINFALL DATA": [col for col in item.keys() if 'Rainfall' in col],
-            "GEOGRAPHICAL AREA": [col for col in item.keys() if 'Total Geographical Area' in col],
-            "GROUNDWATER RECHARGE": [col for col in item.keys() if 'Ground Water Recharge' in col],
-            "INFLOWS & OUTFLOWS": [col for col in item.keys() if 'Inflows and Outflows' in col],
-            "ANNUAL RECHARGE": [col for col in item.keys() if 'Annual Ground water Recharge' in col],
-            "ENVIRONMENTAL FLOWS": [col for col in item.keys() if 'Environmental Flows' in col],
-            "EXTRACTABLE RESOURCES": [col for col in item.keys() if 'Annual Extractable Ground water Resource' in col],
-            "EXTRACTION DATA": [col for col in item.keys() if 'Ground Water Extraction for all uses' in col],
-            "EXTRACTION STAGE": [col for col in item.keys() if 'Stage of Ground Water Extraction' in col],
-            "FUTURE ALLOCATION": [col for col in item.keys() if 'Allocation of Ground Water Resource' in col],
-            "FUTURE AVAILABILITY": [col for col in item.keys() if 'Net Annual Ground Water Availability' in col],
-            "QUALITY TAGGING": [col for col in item.keys() if 'Quality Tagging' in col],
-            "ADDITIONAL RESOURCES": [col for col in item.keys() if 'Additional Potential Resources' in col],
-            "COASTAL AREAS": [col for col in item.keys() if 'Coastal Areas' in col],
-            "UNCONFINED RESOURCES": [col for col in item.keys() if 'In-Storage Unconfined Ground Water Resources' in col],
-            "CONFINED RESOURCES": [col for col in item.keys() if 'Confined Ground Water Resources' in col],
-            "SEMI-CONFINED RESOURCES": [col for col in item.keys() if 'Semi Confined Ground Water Resources' in col],
-            "TOTAL AVAILABILITY": [col for col in item.keys() if 'Total Ground Water Availability' in col],
+            "RAINFALL DATA": [col for col in item.keys() if 'rainfall' in col.lower()],
+            "GEOGRAPHICAL AREA": [col for col in item.keys() if 'geographical_area' in col.lower()],
+            "GROUNDWATER RECHARGE": [col for col in item.keys() if 'recharge' in col.lower()],
+            "INFLOWS & OUTFLOWS": [col for col in item.keys() if 'inflows' in col.lower() or 'outflows' in col.lower()],
+            "ANNUAL RECHARGE": [col for col in item.keys() if 'annual' in col.lower() and 'recharge' in col.lower()],
+            "ENVIRONMENTAL FLOWS": [col for col in item.keys() if 'environmental' in col.lower()],
+            "EXTRACTABLE RESOURCES": [col for col in item.keys() if 'extractable' in col.lower()],
+            "EXTRACTION DATA": [col for col in item.keys() if 'extraction' in col.lower()],
+            "EXTRACTION STAGE": [col for col in item.keys() if 'stage' in col.lower()],
+            "FUTURE ALLOCATION": [col for col in item.keys() if 'allocation' in col.lower()],
+            "FUTURE AVAILABILITY": [col for col in item.keys() if 'availability' in col.lower()],
+            "QUALITY TAGGING": [col for col in item.keys() if 'quality' in col.lower()],
+            "ADDITIONAL RESOURCES": [col for col in item.keys() if 'additional' in col.lower()],
+            "COASTAL AREAS": [col for col in item.keys() if 'coastal' in col.lower()],
+            "UNCONFINED RESOURCES": [col for col in item.keys() if 'unconfined' in col.lower()],
+            "CONFINED RESOURCES": [col for col in item.keys() if 'confined' in col.lower()],
+            "SEMI-CONFINED RESOURCES": [col for col in item.keys() if 'semi' in col.lower() and 'confined' in col.lower()],
+            "TOTAL AVAILABILITY": [col for col in item.keys() if 'total' in col.lower() and 'availability' in col.lower()],
             "OTHER DATA": []
         }
         
         # Add uncategorized columns to "OTHER DATA"
-        excluded_keys = {'STATE', 'DISTRICT', 'ASSESSMENT UNIT', 'Assessment_Year', 'S.No', 'combined_text', 'text'}
+        excluded_keys = {'state', 'district', 'assessment_unit', 'year', 'serial_number', 'combined_text', 'text', 'source_file'}
         for key in item.keys():
             if key not in excluded_keys and not any(key in cat_cols for cat_cols in categories.values()):
                 categories["OTHER DATA"].append(key)
@@ -806,21 +802,21 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
         
         # Define comprehensive numerical columns for averaging
         numerical_columns = [
-            'Annual Ground water Recharge (ham) - Total - Total',
-            'Annual Extractable Ground water Resource (ham) - Total - Total',
-            'Ground Water Extraction for all uses (ha.m) - Total - Total',
-            'Stage of Ground Water Extraction (%) - Total - Total',
-            'Net Annual Ground Water Availability for Future Use (ham) - Total - Total',
-            'Environmental Flows (ham) - Total - Total',
-            'Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (ham) - Total - Total'
+            'annual_ground_water_recharge_ham',
+            'annual_extractable_ground_water_resource_ham',
+            'ground_water_extraction_for_all_uses_ham',
+            'stage_of_ground_water_extraction_',
+            'net_annual_ground_water_availability_for_future_use_ham',
+            'environmental_flows_ham',
+            'allocation_of_ground_water_resource_for_domestic_utilisation_for_projected_year_2025_ham'
         ]
         
         # Add rainfall columns
-        rainfall_cols = [col for col in context_df.columns if 'Rainfall (mm)' in col and 'Total' in col]
+        rainfall_cols = [col for col in context_df.columns if 'rainfall' in col.lower()]
         numerical_columns.extend(rainfall_cols)
         
         # Add geographical area columns
-        area_cols = [col for col in context_df.columns if 'Total Geographical Area (ha)' in col and 'Total' in col]
+        area_cols = [col for col in context_df.columns if 'geographical_area' in col.lower()]
         numerical_columns.extend(area_cols)
         
         avg_data = {}
@@ -862,35 +858,35 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
     # Column descriptions for better understanding
     column_descriptions = """
 COLUMN DESCRIPTIONS:
-- S.No: Serial number
-- STATE: State name
-- DISTRICT: District name  
-- ASSESSMENT UNIT: Assessment unit name
-- Assessment_Year: Year of assessment
-- Rainfall (mm): Precipitation data (C=Consolidated, NC=Non-Consolidated, PQ=Partially Consolidated, Total=All)
-- Total Geographical Area (ha): Total area in hectares
-- Ground Water Recharge (ham): Groundwater recharge from various sources (rainfall, canals, irrigation, tanks, etc.)
-- Inflows and Outflows (ham): Water movement (base flow, stream recharges, lateral flows, vertical flows, evaporation, transpiration)
-- Annual Ground water Recharge (ham): Total annual groundwater recharge
-- Environmental Flows (ham): Water reserved for environmental needs
-- Annual Extractable Ground water Resource (ham): Total extractable groundwater resource
-- Ground Water Extraction for all uses (ha.m): Water extraction for domestic, industrial, and irrigation use
-- Stage of Ground Water Extraction (%): Percentage of groundwater extraction relative to availability
-- Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (ham): Future domestic water allocation
-- Net Annual Ground Water Availability for Future Use (ham): Available groundwater for future use
-- Quality Tagging: Water quality parameters (major and other parameters)
-- Additional Potential Resources Under Specific Conditions(ham): Additional resources under specific conditions
-- Coastal Areas: Coastal area groundwater data
-- In-Storage Unconfined Ground Water Resources(ham): Stored unconfined aquifer resources
-- Dynamic Confined Ground Water Resources(ham): Dynamic confined aquifer resources
-- In-Storage Confined Ground Water Resources(ham): Stored confined aquifer resources
-- Dynamic Semi Confined Ground Water Resources (ham): Dynamic semi-confined aquifer resources
-- In-Storage Semi Confined Ground Water Resources (ham): Stored semi-confined aquifer resources
-- Total Ground Water Availability in the area (ham): Total groundwater availability (fresh and saline)
+- serial_number: Serial number
+- state: State name
+- district: District name  
+- assessment_unit: Assessment unit name
+- year: Year of assessment
+- rainfall_mm: Precipitation data (C=Consolidated, NC=Non-Consolidated, PQ=Partially Consolidated, Total=All)
+- total_geographical_area_ha: Total area in hectares
+- ground_water_recharge_ham: Groundwater recharge from various sources (rainfall, canals, irrigation, tanks, etc.)
+- inflows_and_outflows_ham: Water movement (base flow, stream recharges, lateral flows, vertical flows, evaporation, transpiration)
+- annual_ground_water_recharge_ham: Total annual groundwater recharge
+- environmental_flows_ham: Water reserved for environmental needs
+- annual_extractable_ground_water_resource_ham: Total extractable groundwater resource
+- ground_water_extraction_for_all_uses_ham: Water extraction for domestic, industrial, and irrigation use
+- stage_of_ground_water_extraction_: Percentage of groundwater extraction relative to availability
+- allocation_of_ground_water_resource_for_domestic_utilisation_for_projected_year_2025_ham: Future domestic water allocation
+- net_annual_ground_water_availability_for_future_use_ham: Available groundwater for future use
+- quality_tagging: Water quality parameters (major and other parameters)
+- additional_potential_resources_under_specific_conditionsham: Additional resources under specific conditions
+- coastal_areas: Coastal area groundwater data
+- instorage_unconfined_ground_water_resourcesham: Stored unconfined aquifer resources
+- dynamic_confined_ground_water_resourcesham: Dynamic confined aquifer resources
+- instorage_confined_ground_water_resourcesham: Stored confined aquifer resources
+- dynamic_semi_confined_ground_water_resources_ham: Dynamic semi-confined aquifer resources
+- instorage_semi_confined_ground_water_resources_ham: Stored semi-confined aquifer resources
+- total_ground_water_availability_in_the_area_ham: Total groundwater availability (fresh and saline)
 """
 
     prompt = (
-        f"You are an expert groundwater data analyst. Provide a comprehensive summary of the groundwater data.{language_instruction}\n"
+        f"You are an expert groundwater data analyst. Provide a comprehensive summary of the INGRIS groundwater data.{language_instruction}\n"
         f"""Here are the rules for data presentation:
 - If a specific year is provided, give data for that year.
 - If no specific year is provided, summarize the data including averages across all available years for the specified location (state or district).
@@ -904,7 +900,7 @@ COLUMN DESCRIPTIONS:
         f"{column_descriptions}\n"
         f"{conversation_history_str}"
         f"{extracted_params_str}"
-        f"Base your answer ONLY on the following groundwater data{location_info}{year_info}:\n{context_str}\n\n"
+        f"Base your answer ONLY on the following INGRIS groundwater data{location_info}{year_info}:\n{context_str}\n\n"
         f"If the data doesn't contain the answer, state that. Do NOT make up information.\n"
         f"Question: {query}\n"
         f"Answer:"
@@ -984,521 +980,12 @@ def load_chat_history(username: str) -> List[Dict[str, str]]:
     except Exception:
         return []
 
-def save_chat_history(username: str, messages: List[Dict[str, str]]) -> None:
-    try:
-        path = _chat_history_path(username)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(messages, f, indent=2)
-    except Exception:
-        pass
-
-def _user_archive_dir(username: str) -> str:
-    safe_username = re.sub(r"[^a-zA-Z0-9_-]", "_", username)
-    p = os.path.join(CHAT_HISTORY_DIR, safe_username)
-    os.makedirs(p, exist_ok=True)
-    return p
-
-def _slugify(text: str, max_len: int = 40) -> str:
-    text = re.sub(r"\s+", " ", text or "").strip()
-    text = re.sub(r"[^a-zA-Z0-9 _-]", "", text)
-    text = text.replace(" ", "-")
-    return text[:max_len] or "chat"
-
-def archive_current_chat(username: str, messages: List[Dict[str, str]]) -> Optional[str]:
-    if not username or not messages:
-        return None
-    try:
-        first_user_msg = next((m.get("content", "") for m in messages if m.get("role") == "user" and m.get("content")), "")
-        title_slug = _slugify(first_user_msg)
-        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{timestamp}_{title_slug}.json"
-        archive_dir = _user_archive_dir(username)
-        archive_path = os.path.join(archive_dir, filename)
-        with open(archive_path, "w", encoding="utf-8") as f:
-            json.dump(messages, f, indent=2)
-        return archive_path
-    except Exception:
-        return None
-
-def list_archived_chats(username: str) -> List[Dict[str, str]]:
-    if not username:
-        return []
-    archive_dir = _user_archive_dir(username)
-    try:
-        files = [os.path.join(archive_dir, f) for f in os.listdir(archive_dir) if f.endswith('.json')]
-        files.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-        chats = []
-        for p in files:
-            name = os.path.basename(p)
-            try:
-                ts_part, slug_part = name.split('_', 1)
-                ts_label = pd.to_datetime(ts_part, format="%Y%m%d").strftime("%Y-%m-%d") if len(ts_part) >= 8 else ts_part
-                label = f"{ts_label} — {os.path.splitext(slug_part)[0]}"
-            except Exception:
-                label = os.path.splitext(name)[0]
-            chats.append({"path": p, "label": label})
-        return chats
-    except Exception:
-        return []
-
-# --- Visualization Functions ---
-def create_groundwater_overview_dashboard(df):
-    """Create a comprehensive overview dashboard of groundwater data."""
-    if df is None or df.empty:
-        return None
-    
-    # Create subplots
-    fig = make_subplots(
-        rows=3, cols=2,
-        subplot_titles=[
-            'Groundwater Extraction by State (Top 10)',
-            'Annual Groundwater Recharge Trends',
-            'Stage of Groundwater Extraction Distribution',
-            'Rainfall vs Groundwater Recharge Correlation',
-            'District-wise Groundwater Availability',
-            'Year-wise Data Coverage'
-        ],
-        specs=[
-            [{"type": "bar"}, {"type": "scatter"}],
-            [{"type": "histogram"}, {"type": "scatter"}],
-            [{"type": "bar"}, {"type": "bar"}]
-        ]
-    )
-    
-    # 1. Groundwater Extraction by State (Top 10)
-    if 'Ground Water Extraction for all uses (ha.m) - Total - Total' in df.columns:
-        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
-        state_extraction = df.groupby('STATE')[extraction_col].sum().sort_values(ascending=False).head(10)
-        
-        fig.add_trace(
-            go.Bar(
-                x=state_extraction.index,
-                y=state_extraction.values,
-                name="Groundwater Extraction",
-                marker_color='lightblue'
-            ),
-            row=1, col=1
-        )
-    
-    # 2. Annual Groundwater Recharge Trends
-    if 'Annual Ground water Recharge (ham) - Total - Total' in df.columns:
-        recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
-        yearly_recharge = df.groupby('Assessment_Year')[recharge_col].mean().reset_index()
-        
-        fig.add_trace(
-            go.Scatter(
-                x=yearly_recharge['Assessment_Year'],
-                y=yearly_recharge[recharge_col],
-                mode='lines+markers',
-                name="Annual Recharge",
-                line=dict(color='green', width=3)
-            ),
-            row=1, col=2
-        )
-    
-    # 3. Stage of Groundwater Extraction Distribution
-    if 'Stage of Ground Water Extraction (%) - Total - Total' in df.columns:
-        stage_col = 'Stage of Ground Water Extraction (%) - Total - Total'
-        stage_data = df[stage_col].dropna()
-        
-        fig.add_trace(
-            go.Histogram(
-                x=stage_data,
-                nbinsx=20,
-                name="Extraction Stage %",
-                marker_color='orange'
-            ),
-            row=2, col=1
-        )
-    
-    # 4. Rainfall vs Groundwater Recharge Correlation
-    if 'Rainfall (mm) - Total - Total' in df.columns and 'Annual Ground water Recharge (ham) - Total - Total' in df.columns:
-        rainfall_col = 'Rainfall (mm) - Total - Total'
-        recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
-        
-        # Sample data for correlation plot
-        sample_data = df[[rainfall_col, recharge_col]].dropna().sample(n=min(1000, len(df)))
-        
-        fig.add_trace(
-            go.Scatter(
-                x=sample_data[rainfall_col],
-                y=sample_data[recharge_col],
-                mode='markers',
-                name="Rainfall vs Recharge",
-                marker=dict(color='purple', size=4, opacity=0.6)
-            ),
-            row=2, col=2
-        )
-    
-    # 5. District-wise Groundwater Availability (Top 15)
-    if 'Annual Extractable Ground water Resource (ham) - Total - Total' in df.columns:
-        resource_col = 'Annual Extractable Ground water Resource (ham) - Total - Total'
-        district_resource = df.groupby('DISTRICT')[resource_col].sum().sort_values(ascending=False).head(15)
-        
-        fig.add_trace(
-            go.Bar(
-                x=district_resource.values,
-                y=district_resource.index,
-                orientation='h',
-                name="Groundwater Resource",
-                marker_color='lightgreen'
-            ),
-            row=3, col=1
-        )
-    
-    # 6. Year-wise Data Coverage
-    yearly_counts = df['Assessment_Year'].value_counts().sort_index()
-    
-    fig.add_trace(
-        go.Bar(
-            x=yearly_counts.index,
-            y=yearly_counts.values,
-            name="Data Records",
-            marker_color='lightcoral'
-        ),
-        row=3, col=2
-    )
-    
-    # Update layout
-    fig.update_layout(
-        height=1200,
-        title_text="Groundwater Data Analysis Dashboard",
-        title_x=0.5,
-        showlegend=False
-    )
-    
-    return fig
-
-def create_state_analysis_plots(df, selected_state=None):
-    """Create detailed analysis plots for a specific state or all states."""
-    if df is None or df.empty:
-        return None
-    
-    # Filter data for selected state if provided
-    if selected_state:
-        state_df = df[df['STATE'] == selected_state]
-        title_suffix = f" - {selected_state}"
-    else:
-        state_df = df
-        title_suffix = " - All States"
-    
-    if state_df.empty:
-        return None
-    
-    # Create subplots
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=[
-            f'Groundwater Extraction by District{title_suffix}',
-            f'Rainfall Distribution{title_suffix}',
-            f'Recharge vs Extraction Scatter{title_suffix}',
-            f'Quality Tagging Analysis{title_suffix}'
-        ],
-        specs=[
-            [{"type": "bar"}, {"type": "box"}],
-            [{"type": "scatter"}, {"type": "pie"}]
-        ]
-    )
-    
-    # 1. Groundwater Extraction by District
-    if 'Ground Water Extraction for all uses (ha.m) - Total - Total' in state_df.columns:
-        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
-        district_extraction = state_df.groupby('DISTRICT')[extraction_col].sum().sort_values(ascending=False).head(10)
-        
-        fig.add_trace(
-            go.Bar(
-                x=district_extraction.index,
-                y=district_extraction.values,
-                name="Extraction by District",
-                marker_color='skyblue'
-            ),
-            row=1, col=1
-        )
-    
-    # 2. Rainfall Distribution
-    if 'Rainfall (mm) - Total - Total' in state_df.columns:
-        rainfall_col = 'Rainfall (mm) - Total - Total'
-        rainfall_data = state_df[rainfall_col].dropna()
-        
-        fig.add_trace(
-            go.Box(
-                y=rainfall_data,
-                name="Rainfall Distribution",
-                marker_color='lightgreen'
-            ),
-            row=1, col=2
-        )
-    
-    # 3. Recharge vs Extraction Scatter
-    if ('Annual Ground water Recharge (ham) - Total - Total' in state_df.columns and 
-        'Ground Water Extraction for all uses (ha.m) - Total - Total' in state_df.columns):
-        recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
-        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
-        
-        scatter_data = state_df[[recharge_col, extraction_col]].dropna()
-        
-        fig.add_trace(
-            go.Scatter(
-                x=scatter_data[recharge_col],
-                y=scatter_data[extraction_col],
-                mode='markers',
-                name="Recharge vs Extraction",
-                marker=dict(
-                    color=scatter_data[recharge_col],
-                    size=8,
-                    opacity=0.7,
-                    colorscale='Viridis',
-                    showscale=True
-                ),
-                text=scatter_data.index
-            ),
-            row=2, col=1
-        )
-    
-    # 4. Quality Tagging Analysis
-    if 'Quality Tagging' in state_df.columns:
-        quality_data = state_df['Quality Tagging'].value_counts()
-        
-        fig.add_trace(
-            go.Pie(
-                labels=quality_data.index,
-                values=quality_data.values,
-                name="Quality Distribution"
-            ),
-            row=2, col=2
-        )
-    
-    # Update layout
-    fig.update_layout(
-        height=800,
-        title_text=f"Detailed State Analysis{title_suffix}",
-        title_x=0.5,
-        showlegend=False
-    )
-    
-    return fig
-
-def create_temporal_analysis_plots(df):
-    """Create temporal analysis plots showing trends over time."""
-    if df is None or df.empty:
-        return None
-    
-    # Create subplots
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=[
-            'Groundwater Recharge Trends by Year',
-            'Extraction Trends by Year',
-            'Stage of Extraction Over Time',
-            'Resource Availability Trends'
-        ],
-        specs=[
-            [{"type": "scatter"}, {"type": "scatter"}],
-            [{"type": "scatter"}, {"type": "scatter"}]
-        ]
-    )
-    
-    # 1. Groundwater Recharge Trends
-    if 'Annual Ground water Recharge (ham) - Total - Total' in df.columns:
-        recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
-        yearly_recharge = df.groupby('Assessment_Year')[recharge_col].agg(['mean', 'std']).reset_index()
-        
-        fig.add_trace(
-            go.Scatter(
-                x=yearly_recharge['Assessment_Year'],
-                y=yearly_recharge['mean'],
-                mode='lines+markers',
-                name="Mean Recharge",
-                line=dict(color='blue', width=3),
-                error_y=dict(type='data', array=yearly_recharge['std'])
-            ),
-            row=1, col=1
-        )
-    
-    # 2. Extraction Trends
-    if 'Ground Water Extraction for all uses (ha.m) - Total - Total' in df.columns:
-        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
-        yearly_extraction = df.groupby('Assessment_Year')[extraction_col].agg(['mean', 'std']).reset_index()
-        
-        fig.add_trace(
-            go.Scatter(
-                x=yearly_extraction['Assessment_Year'],
-                y=yearly_extraction['mean'],
-                mode='lines+markers',
-                name="Mean Extraction",
-                line=dict(color='red', width=3),
-                error_y=dict(type='data', array=yearly_extraction['std'])
-            ),
-            row=1, col=2
-        )
-    
-    # 3. Stage of Extraction Over Time
-    if 'Stage of Ground Water Extraction (%) - Total - Total' in df.columns:
-        stage_col = 'Stage of Ground Water Extraction (%) - Total - Total'
-        yearly_stage = df.groupby('Assessment_Year')[stage_col].mean().reset_index()
-        
-        fig.add_trace(
-            go.Scatter(
-                x=yearly_stage['Assessment_Year'],
-                y=yearly_stage[stage_col],
-                mode='lines+markers',
-                name="Extraction Stage %",
-                line=dict(color='orange', width=3)
-            ),
-            row=2, col=1
-        )
-    
-    # 4. Resource Availability Trends
-    if 'Annual Extractable Ground water Resource (ham) - Total - Total' in df.columns:
-        resource_col = 'Annual Extractable Ground water Resource (ham) - Total - Total'
-        yearly_resource = df.groupby('Assessment_Year')[resource_col].mean().reset_index()
-        
-        fig.add_trace(
-            go.Scatter(
-                x=yearly_resource['Assessment_Year'],
-                y=yearly_resource[resource_col],
-                mode='lines+markers',
-                name="Available Resource",
-                line=dict(color='green', width=3)
-            ),
-            row=2, col=2
-        )
-    
-    # Update layout
-    fig.update_layout(
-        height=800,
-        title_text="Temporal Analysis - Groundwater Trends Over Time",
-        title_x=0.5,
-        showlegend=True
-    )
-    
-    return fig
-
-def create_geographical_heatmap(df, metric='Annual Ground water Recharge (ham) - Total - Total'):
-    """Create a geographical heatmap of groundwater metrics by state."""
-    if df is None or df.empty or metric not in df.columns:
-        return None
-    
-    # Aggregate data by state
-    state_metrics = df.groupby('STATE')[metric].mean().reset_index()
-    
-    # Create a simple bar chart as heatmap (since we don't have actual coordinates)
-    fig = go.Figure(data=[
-        go.Bar(
-            x=state_metrics['STATE'],
-            y=state_metrics[metric],
-            marker=dict(
-                color=state_metrics[metric],
-                colorscale='Viridis',
-                showscale=True,
-                colorbar=dict(title=metric)
-            )
-        )
-    ])
-    
-    fig.update_layout(
-        title=f"Geographical Distribution of {metric}",
-        xaxis_title="State",
-        yaxis_title=metric,
-        height=600,
-        xaxis_tickangle=-45
-    )
-    
-    return fig
-
-def create_correlation_matrix_plot(df):
-    """Create a correlation matrix heatmap of numerical groundwater parameters."""
-    if df is None or df.empty:
-        return None
-    
-    # Select numerical columns
-    numerical_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    
-    # Remove columns with too many NaN values
-    numerical_cols = [col for col in numerical_cols if df[col].notna().sum() > len(df) * 0.1]
-    
-    if len(numerical_cols) < 2:
-        return None
-    
-    # Calculate correlation matrix
-    corr_matrix = df[numerical_cols].corr()
-    
-    # Create heatmap
-    fig = go.Figure(data=go.Heatmap(
-        z=corr_matrix.values,
-        x=corr_matrix.columns,
-        y=corr_matrix.columns,
-        colorscale='RdBu',
-        zmid=0,
-        text=np.round(corr_matrix.values, 2),
-        texttemplate="%{text}",
-        textfont={"size": 10}
-    ))
-    
-    fig.update_layout(
-        title="Correlation Matrix of Groundwater Parameters",
-        height=600,
-        xaxis_tickangle=-45
-    )
-    
-    return fig
-
-def create_statistical_summary_plots(df):
-    """Create statistical summary plots including distribution and box plots."""
-    if df is None or df.empty:
-        return None
-    
-    # Select key numerical columns
-    key_columns = [
-        'Annual Ground water Recharge (ham) - Total - Total',
-        'Ground Water Extraction for all uses (ha.m) - Total - Total',
-        'Stage of Ground Water Extraction (%) - Total - Total',
-        'Rainfall (mm) - Total - Total'
-    ]
-    
-    available_columns = [col for col in key_columns if col in df.columns]
-    
-    if not available_columns:
-        return None
-    
-    # Create subplots
-    fig = make_subplots(
-        rows=2, cols=2,
-        subplot_titles=[f'{col} Distribution' for col in available_columns[:4]]
-    )
-    
-    for i, col in enumerate(available_columns[:4]):
-        row = (i // 2) + 1
-        col_idx = (i % 2) + 1
-        
-        data = df[col].dropna()
-        
-        # Create histogram
-        fig.add_trace(
-            go.Histogram(
-                x=data,
-                nbinsx=30,
-                name=col,
-                opacity=0.7
-            ),
-            row=row, col=col_idx
-        )
-    
-    fig.update_layout(
-        height=800,
-        title_text="Statistical Distribution of Key Groundwater Parameters",
-        title_x=0.5,
-        showlegend=False
-    )
-    
-    return fig
-
 # ===== Streamlit UI =====
 st.set_page_config(layout="wide")
 app_title_suffix = ""
 if "user" in st.session_state and st.session_state.get("user"):
     app_title_suffix = f" — Signed in as {st.session_state['user']}"
-st.title(f"💧 Groundwater Chatbot (Multilingual){app_title_suffix}")
+st.title(f"💧 INGRIS Groundwater Chatbot (Multilingual){app_title_suffix}")
 
 # Language selection in sidebar
 with st.sidebar:
@@ -1518,7 +1005,7 @@ with st.sidebar:
         st.session_state.selected_language = selected_language
 
     st.header("🔧 Options")
-    if st.button("🗑 Clear All Embeddings", help="This will delete all stored Excel data embeddings from Qdrant"):
+    if st.button("🗑 Clear All Embeddings", help="This will delete all stored INGRIS data embeddings from Qdrant"):
         clear_all_embeddings()
         st.session_state.embeddings_uploaded = False
         st.rerun()
@@ -1579,57 +1066,15 @@ with st.sidebar:
         else:
             st.caption("No archived chats yet. Start a new chat to create one.")
 
-    st.header("📊 Data Visualization")
-    if st.button("📈 Overview Dashboard", use_container_width=True):
-        st.session_state.show_dashboard = True
-        st.session_state.show_state_analysis = False
-        st.session_state.show_temporal_analysis = False
-        st.session_state.show_correlation = False
-        st.session_state.show_statistical = False
-        st.rerun()
-    
-    if st.button("🗺️ State Analysis", use_container_width=True):
-        st.session_state.show_dashboard = False
-        st.session_state.show_state_analysis = True
-        st.session_state.show_temporal_analysis = False
-        st.session_state.show_correlation = False
-        st.session_state.show_statistical = False
-        st.rerun()
-    
-    if st.button("📅 Temporal Analysis", use_container_width=True):
-        st.session_state.show_dashboard = False
-        st.session_state.show_state_analysis = False
-        st.session_state.show_temporal_analysis = True
-        st.session_state.show_correlation = False
-        st.session_state.show_statistical = False
-        st.rerun()
-    
-    if st.button("🔗 Correlation Matrix", use_container_width=True):
-        st.session_state.show_dashboard = False
-        st.session_state.show_state_analysis = False
-        st.session_state.show_temporal_analysis = False
-        st.session_state.show_correlation = True
-        st.session_state.show_statistical = False
-        st.rerun()
-    
-    if st.button("📊 Statistical Summary", use_container_width=True):
-        st.session_state.show_dashboard = False
-        st.session_state.show_state_analysis = False
-        st.session_state.show_temporal_analysis = False
-        st.session_state.show_correlation = False
-        st.session_state.show_statistical = True
-        st.rerun()
-
     st.header("ℹ Information")
     st.info("""
     *How it works:*
-    - Processes `master_groundwater_data.csv` (generated by `excel_ingestor.py`)
+    - Processes `ingris_rag_ready.csv` (generated by `excel_to_csv_extractor.py`)
     - Creates embeddings for each row and stores them in Qdrant.
     - Uses hybrid search (dense + sparse) and reranking for relevant data retrieval.
     - Gemini LLM generates answers based on the retrieved structured data.
     - **Supports multiple languages** - ask questions in your preferred language!
     - Supports year-specific queries or aggregates data if no year is mentioned.
-    - **Interactive visualizations** - Explore data with detailed charts and graphs!
     """)
 
     st.header("👤 Account")
@@ -1680,19 +1125,6 @@ if 'bm25_df' not in st.session_state:
     st.session_state.bm25_df = None
 if 'messages' not in st.session_state:
     st.session_state.messages = []
-
-# Initialize visualization state variables
-if 'show_dashboard' not in st.session_state:
-    st.session_state.show_dashboard = False
-if 'show_state_analysis' not in st.session_state:
-    st.session_state.show_state_analysis = False
-if 'show_temporal_analysis' not in st.session_state:
-    st.session_state.show_temporal_analysis = False
-if 'show_correlation' not in st.session_state:
-    st.session_state.show_correlation = False
-if 'show_statistical' not in st.session_state:
-    st.session_state.show_statistical = False
-
 if 'user' not in st.session_state:
     st.session_state.user = None
 if 'selected_language' not in st.session_state:
@@ -1704,26 +1136,26 @@ master_df = load_master_dataframe()
 # Setup Qdrant collection and upload embeddings if not already done
 if setup_collection():
     if not st.session_state.embeddings_uploaded:
-        st.info("⏳ Checking for existing Excel data embeddings...")
+        st.info("⏳ Checking for existing INGRIS data embeddings...")
         if check_excel_embeddings_exist():
-            st.info("📚 Found existing Excel data embeddings. Initializing BM25...")
+            st.info("📚 Found existing INGRIS data embeddings. Initializing BM25...")
             load_all_excel_chunks_for_bm25()
             st.session_state.embeddings_uploaded = True
-            st.success("✅ Excel data embeddings loaded and BM25 initialized.")
+            st.success("✅ INGRIS data embeddings loaded and BM25 initialized.")
         else:
-            st.info("⏳ Uploading Excel data to Qdrant...")
+            st.info("⏳ Uploading INGRIS data to Qdrant...")
             if upload_excel_to_qdrant(master_df):
                 load_all_excel_chunks_for_bm25(master_df)
                 st.session_state.embeddings_uploaded = True
-                st.success("✅ Excel data processed and indexed.")
+                st.success("✅ INGRIS data processed and indexed.")
             else:
-                st.error("Failed to upload Excel data embeddings to Qdrant.")
+                st.error("Failed to upload INGRIS data embeddings to Qdrant.")
     elif st.session_state.embeddings_uploaded and st.session_state.bm25_model is None:
         st.info("📚 Embeddings previously uploaded. Initializing BM25 from existing data...")
         load_all_excel_chunks_for_bm25()
 
 # --- Chat Interface ---
-st.header("Ask a Question about Groundwater Data")
+st.header("Ask a Question about INGRIS Groundwater Data")
 if not st.session_state.user:
     st.warning("Please log in to chat and save your conversation history.")
 
@@ -1733,11 +1165,11 @@ st.info(f"🌐 Current language: {current_lang_name}")
 
 # Display available data information
 if master_df is not None:
-    available_states = master_df['STATE'].unique()
-    available_years = master_df['Assessment_Year'].unique()
+    available_states = master_df['state'].unique()
+    available_years = master_df['year'].unique()
     total_records = len(master_df)
     
-    st.info(f"📊 Dataset contains {total_records} records from {len(available_states)} states across {len(available_years)} years")
+    st.info(f"📊 INGRIS Dataset contains {total_records} records from {len(available_states)} states across {len(available_years)} years")
     
     # Show sample states
     sample_states = [s for s in available_states[:5] if pd.notna(s)]
@@ -1749,116 +1181,6 @@ if model is not None:
     st.success("✅ Dense embeddings available (hybrid search enabled)")
 else:
     st.warning("⚠️ Dense embeddings disabled (BM25-only search)")
-
-# --- Visualization Display Section ---
-if st.session_state.get("show_dashboard", False):
-    st.header("📈 Groundwater Data Overview Dashboard")
-    if master_df is not None:
-        dashboard_fig = create_groundwater_overview_dashboard(master_df)
-        if dashboard_fig:
-            st.plotly_chart(dashboard_fig, use_container_width=True)
-        else:
-            st.error("Unable to create dashboard. Please check your data.")
-    else:
-        st.error("No data available for visualization.")
-
-elif st.session_state.get("show_state_analysis", False):
-    st.header("🗺️ State-wise Analysis")
-    if master_df is not None:
-        # State selection
-        available_states = sorted([s for s in master_df['STATE'].unique() if pd.notna(s)])
-        selected_state = st.selectbox(
-            "Select a state for detailed analysis (or 'All States' for overview):",
-            ["All States"] + available_states,
-            key="state_selector"
-        )
-        
-        if selected_state == "All States":
-            state_fig = create_state_analysis_plots(master_df)
-        else:
-            state_fig = create_state_analysis_plots(master_df, selected_state)
-        
-        if state_fig:
-            st.plotly_chart(state_fig, use_container_width=True)
-        else:
-            st.error("Unable to create state analysis. Please check your data.")
-    else:
-        st.error("No data available for visualization.")
-
-elif st.session_state.get("show_temporal_analysis", False):
-    st.header("📅 Temporal Analysis - Trends Over Time")
-    if master_df is not None:
-        temporal_fig = create_temporal_analysis_plots(master_df)
-        if temporal_fig:
-            st.plotly_chart(temporal_fig, use_container_width=True)
-        else:
-            st.error("Unable to create temporal analysis. Please check your data.")
-    else:
-        st.error("No data available for visualization.")
-
-elif st.session_state.get("show_correlation", False):
-    st.header("🔗 Correlation Analysis")
-    if master_df is not None:
-        # Metric selection for geographical heatmap
-        numerical_cols = master_df.select_dtypes(include=[np.number]).columns.tolist()
-        key_metrics = [
-            'Annual Ground water Recharge (ham) - Total - Total',
-            'Ground Water Extraction for all uses (ha.m) - Total - Total',
-            'Stage of Ground Water Extraction (%) - Total - Total',
-            'Rainfall (mm) - Total - Total'
-        ]
-        available_metrics = [col for col in key_metrics if col in numerical_cols]
-        
-        if available_metrics:
-            selected_metric = st.selectbox(
-                "Select metric for geographical distribution:",
-                available_metrics,
-                key="metric_selector"
-            )
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("Geographical Distribution")
-                geo_fig = create_geographical_heatmap(master_df, selected_metric)
-                if geo_fig:
-                    st.plotly_chart(geo_fig, use_container_width=True)
-            
-            with col2:
-                st.subheader("Correlation Matrix")
-                corr_fig = create_correlation_matrix_plot(master_df)
-                if corr_fig:
-                    st.plotly_chart(corr_fig, use_container_width=True)
-        else:
-            st.error("No suitable numerical metrics found for correlation analysis.")
-    else:
-        st.error("No data available for visualization.")
-
-elif st.session_state.get("show_statistical", False):
-    st.header("📊 Statistical Summary")
-    if master_df is not None:
-        statistical_fig = create_statistical_summary_plots(master_df)
-        if statistical_fig:
-            st.plotly_chart(statistical_fig, use_container_width=True)
-            
-            # Additional statistical information
-            st.subheader("📈 Key Statistics")
-            numerical_cols = master_df.select_dtypes(include=[np.number]).columns.tolist()
-            key_columns = [
-                'Annual Ground water Recharge (ham) - Total - Total',
-                'Ground Water Extraction for all uses (ha.m) - Total - Total',
-                'Stage of Ground Water Extraction (%) - Total - Total',
-                'Rainfall (mm) - Total - Total'
-            ]
-            available_columns = [col for col in key_columns if col in numerical_cols]
-            
-            if available_columns:
-                stats_data = master_df[available_columns].describe()
-                st.dataframe(stats_data, use_container_width=True)
-        else:
-            st.error("Unable to create statistical summary. Please check your data.")
-    else:
-        st.error("No data available for visualization.")
 
 # Display chat messages from history on app rerun
 for message in st.session_state.messages:
@@ -1903,8 +1225,8 @@ if user_query and st.session_state.embeddings_uploaded:
     target_district = None
 
     if master_df is not None:
-        unique_states = master_df['STATE'].unique().tolist()
-        unique_districts = master_df['DISTRICT'].unique().tolist()
+        unique_states = master_df['state'].unique().tolist()
+        unique_districts = master_df['district'].unique().tolist()
 
         # Debug: Show what we're searching for
         st.info(f"🔍 Searching for locations in: {translated_query}")
@@ -1924,7 +1246,7 @@ if user_query and st.session_state.embeddings_uploaded:
                     break
 
         if target_state:
-            districts_in_state = master_df[master_df['STATE'] == target_state]['DISTRICT'].unique().tolist()
+            districts_in_state = master_df[master_df['state'] == target_state]['district'].unique().tolist()
             for district in districts_in_state:
                 if pd.notna(district):
                     # Exact match
@@ -2040,15 +1362,15 @@ if user_query and st.session_state.embeddings_uploaded:
         # Get available states and districts for better user guidance
         available_info = ""
         if master_df is not None:
-            available_states = master_df['STATE'].unique()[:10]  # Show first 10 states
-            available_years = master_df['Assessment_Year'].unique()[:5]  # Show first 5 years
+            available_states = master_df['state'].unique()[:10]  # Show first 10 states
+            available_years = master_df['year'].unique()[:5]  # Show first 5 years
             
             available_info = f"\n\nAvailable data includes:\n"
             available_info += f"• States: {', '.join([str(s) for s in available_states if pd.notna(s)])}\n"
             available_info += f"• Years: {', '.join([str(y) for y in available_years if pd.notna(y)])}\n"
             available_info += f"• Total records: {len(master_df)}"
         
-        warning_message = f"I couldn't find specific information for your query in the groundwater dataset.{available_info}\n\nPlease try asking about the available states or ask a general question about groundwater data."
+        warning_message = f"I couldn't find specific information for your query in the INGRIS groundwater dataset.{available_info}\n\nPlease try asking about the available states or ask a general question about groundwater data."
         
         if st.session_state.selected_language != 'en':
             warning_message = translate_answer_to_language(warning_message, st.session_state.selected_language)

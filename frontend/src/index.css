@@ -10,6 +10,12 @@
 .res-tile h3 { margin: 0 0 0.4rem; }
 .res-tile p { margin: 0 0 0.8rem; opacity: 0.95; }
 @media (max-width: 900px) { .res-tiles { grid-template-columns: 1fr; } }
+
+/* Animations */
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 :root {
     /* Dark Navy Blue Theme */
     --color-primary: #3B82F6;

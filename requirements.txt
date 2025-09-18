@@ -1,5 +1,6 @@
 pandas
 spacy
+spacy-model-en-core-web-sm
 openpyxl
 numpy
 sentence-transformers
@@ -17,3 +18,4 @@ uvicorn
 torch
 IndicTransToolkit
 langdetect
+plotly

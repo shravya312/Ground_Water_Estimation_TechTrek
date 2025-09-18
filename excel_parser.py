@@ -1,7 +1,7 @@
 
 import pandas as pd
 
-file_path = "Ground_Water_Estimation_TechTrek/datasets123/datasets/CentralReport1757330502951.xlsx"
+file_path = "datasets123/datasets/CentralReport1757330502951.xlsx"
 
 # Read the Excel file, including the rows that will form the header
 full_df = pd.read_excel(file_path, header=None, skiprows=6) # Start from row 7 (index 6)

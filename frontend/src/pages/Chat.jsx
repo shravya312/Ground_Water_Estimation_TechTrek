@@ -6,6 +6,7 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { saveChatMessage, getUserChatHistory, clearChatHistory } from '../services/chatHistoryService'
 import MarkdownRenderer from '../components/MarkdownRenderer'
 import LanguageSelector from '../components/LanguageSelector'
+import VisualizationPanel from '../components/VisualizationPanel'
 
 function Chat() {
   const [messages, setMessages] = useState([
@@ -19,6 +20,7 @@ function Chat() {
   const [selectedHistoryIndex, setSelectedHistoryIndex] = useState(-1)
   const [currentConversationId, setCurrentConversationId] = useState(null)
   const [selectedLanguage, setSelectedLanguage] = useState('en')
+  const [showVisualizationPanel, setShowVisualizationPanel] = useState(false)
   const bottomRef = useRef(null)
 
   async function handleSend(e) {
@@ -393,6 +395,33 @@ function Chat() {
               <h2 style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: '1.5rem', fontWeight: '700' }}>Groundwater Assistant</h2>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              <button 
+                onClick={() => setShowVisualizationPanel(true)}
+                style={{ 
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '0.9rem',
+                  background: 'var(--gradient-primary)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.transform = 'translateY(-1px)'
+                  e.target.style.boxShadow = 'var(--shadow-lg)'
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.transform = 'translateY(0)'
+                  e.target.style.boxShadow = 'none'
+                }}
+              >
+                📊 Visualizations
+              </button>
               <LanguageSelector 
                 selectedLanguage={selectedLanguage}
                 onLanguageChange={setSelectedLanguage}
@@ -493,6 +522,12 @@ function Chat() {
           </div>
         </form>
       </main>
+      
+      {/* Visualization Panel */}
+      <VisualizationPanel 
+        isOpen={showVisualizationPanel}
+        onClose={() => setShowVisualizationPanel(false)}
+      />
     </div>
   )
 }
