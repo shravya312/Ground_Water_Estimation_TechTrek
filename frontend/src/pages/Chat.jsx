@@ -7,6 +7,7 @@ import { saveChatMessage, getUserChatHistory, clearChatHistory } from '../servic
 import MarkdownRenderer from '../components/MarkdownRenderer'
 import LanguageSelector from '../components/LanguageSelector'
 import VisualizationPanel from '../components/VisualizationPanel'
+import LocationMap from '../components/LocationMap'
 
 function Chat() {
   const [messages, setMessages] = useState([
@@ -21,7 +22,38 @@ function Chat() {
   const [currentConversationId, setCurrentConversationId] = useState(null)
   const [selectedLanguage, setSelectedLanguage] = useState('en')
   const [showVisualizationPanel, setShowVisualizationPanel] = useState(false)
+  const [showLocationMap, setShowLocationMap] = useState(false)
+  const [userLocation, setUserLocation] = useState(null)
+  const [isGettingLocation, setIsGettingLocation] = useState(false)
   const bottomRef = useRef(null)
+
+  const handleLocationChange = (location, analysisResult = null) => {
+    setUserLocation(location)
+    setIsGettingLocation(true)
+    
+    // Simulate analysis delay
+    setTimeout(() => {
+      setIsGettingLocation(false)
+      
+      let locationMsg
+      if (analysisResult && !analysisResult.error) {
+        // If we have analysis results, show them
+        locationMsg = {
+          id: Date.now(),
+          role: 'assistant',
+          text: `📍 **Groundwater Analysis for ${analysisResult.state}**\n\n**Location:** ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}\n**Data Points:** ${analysisResult.data_points}\n**Districts Covered:** ${analysisResult.summary?.districts_covered || 0}\n**Years:** ${analysisResult.summary?.years_covered?.join(', ') || 'N/A'}\n\n**Analysis:**\n${analysisResult.analysis}\n\nYou can ask me more specific questions about groundwater conditions in ${analysisResult.state}!`
+        }
+      } else {
+        // Default location message
+        locationMsg = {
+          id: Date.now(),
+          role: 'assistant',
+          text: `📍 **Location Analysis Complete!**\n\nI've detected your location at:\n- **Latitude:** ${location.lat.toFixed(6)}\n- **Longitude:** ${location.lng.toFixed(6)}\n\nI can now provide location-specific groundwater data and analysis for your area. Ask me about groundwater conditions, recharge rates, or extraction levels in your region!`
+        }
+      }
+      setMessages(prev => [...prev, locationMsg])
+    }, 2000)
+  }
 
   async function handleSend(e) {
     e.preventDefault()
@@ -396,6 +428,33 @@ function Chat() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <button 
+                onClick={() => setShowLocationMap(true)}
+                style={{ 
+                  padding: '0.75rem 1.5rem',
+                  fontSize: '0.9rem',
+                  background: 'var(--gradient-secondary)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.transform = 'translateY(-1px)'
+                  e.target.style.boxShadow = 'var(--shadow-lg)'
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.transform = 'translateY(0)'
+                  e.target.style.boxShadow = 'none'
+                }}
+              >
+                📍 Location Analysis
+              </button>
+              <button 
                 onClick={() => setShowVisualizationPanel(true)}
                 style={{ 
                   padding: '0.75rem 1.5rem',
@@ -528,6 +587,82 @@ function Chat() {
         isOpen={showVisualizationPanel}
         onClose={() => setShowVisualizationPanel(false)}
       />
+      
+      {/* Location Map Modal */}
+      {showLocationMap && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          padding: '2rem'
+        }}>
+          <div style={{
+            background: 'var(--color-surface)',
+            borderRadius: 20,
+            boxShadow: 'var(--shadow-xl)',
+            width: '100%',
+            maxWidth: '800px',
+            height: '70vh',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '1.5rem 2rem',
+              borderBottom: '1px solid var(--color-border)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <h2 style={{ margin: 0, color: 'var(--color-text-primary)' }}>
+                📍 Location-Based Groundwater Analysis
+              </h2>
+              <button
+                onClick={() => setShowLocationMap(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  cursor: 'pointer',
+                  color: 'var(--color-text-secondary)',
+                  padding: '0.5rem',
+                  borderRadius: '50%',
+                  width: '40px',
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.background = 'var(--color-surface-elevated)'
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.background = 'none'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Map Content */}
+            <div style={{ flex: 1, padding: '1.5rem' }}>
+              <LocationMap
+                location={userLocation}
+                onLocationChange={handleLocationChange}
+                isGettingLocation={isGettingLocation}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

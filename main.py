@@ -22,7 +22,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-from IndicTransToolkit.processor import IndicProcessor
+# Optional import for IndicTransToolkit
+try:
+    from IndicTransToolkit.processor import IndicProcessor
+    INDIC_TRANS_AVAILABLE = True
+except ImportError:
+    IndicProcessor = None
+    INDIC_TRANS_AVAILABLE = False
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -236,9 +242,20 @@ def _init_components():
     global _qdrant_client, _model, _nlp, _gemini_model, _master_df, _translator_model, _translator_tokenizer, _indic_processor
     if _qdrant_client is None:
         try:
-            _qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=60)
+            print(f"🔄 Connecting to Qdrant at {QDRANT_URL}...")
+            _qdrant_client = QdrantClient(
+                url=QDRANT_URL, 
+                api_key=QDRANT_API_KEY if QDRANT_API_KEY else None, 
+                timeout=30,
+                prefer_grpc=False  # Use HTTP instead of gRPC for better compatibility
+            )
+            # Test the connection
+            _qdrant_client.get_collections()
+            print("✅ Qdrant connection established")
         except Exception as e:
-            raise Exception(f"Failed to initialize Qdrant client: {str(e)}")
+            print(f"❌ Failed to initialize Qdrant client: {str(e)}")
+            print("⚠️ Continuing without Qdrant - some features will be limited")
+            _qdrant_client = None
     if _model is None:
         if not initialize_sentence_transformer():
             print("Warning: Dense embeddings are disabled (SentenceTransformer failed). Falling back to BM25-only search.")
@@ -246,14 +263,17 @@ def _init_components():
         try:
             _nlp = spacy.load("en_core_web_sm")
         except Exception as e:
-            raise Exception(f"Failed to initialize spaCy NLP model: {str(e)}")
+            print(f"Warning: Failed to initialize spaCy NLP model: {str(e)}. Some features may be limited.")
+            _nlp = None
     if _gemini_model is None and GEMINI_API_KEY:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
             _gemini_model = genai.GenerativeModel('gemini-1.5-flash')
         except Exception as e:
             raise Exception(f"Failed to initialize Gemini API: {str(e)}")
-    if _translator_model is None or _translator_tokenizer is None or _indic_processor is None:
+    # Skip translator model loading for now to speed up startup
+    # This can be loaded later when needed
+    if False:  # Disabled for faster startup
         try:
             model_name = "ai4bharat/indictrans2-en-indic-1B"
             _translator_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
@@ -263,7 +283,10 @@ def _init_components():
                 dtype=torch.float32
             )
             _translator_model.to(torch.device('cpu'))
-            _indic_processor = IndicProcessor(inference=True)
+            if INDIC_TRANS_AVAILABLE:
+                _indic_processor = IndicProcessor(inference=True)
+            else:
+                _indic_processor = None
         except Exception as e:
             print(f"Warning: Failed to initialize IndicTrans2 translator: {e}")
     if _master_df is None:
@@ -342,6 +365,10 @@ def is_valid_embeddings(embeddings):
 def setup_collection():
     """Create Qdrant collection if it doesn't exist and ensure indexes for year, state, and district"""
     try:
+        if _qdrant_client is None:
+            print("⚠️ Qdrant client not available, skipping collection setup")
+            return False
+            
         collections = _qdrant_client.get_collections()
         collection_exists = any(col.name == COLLECTION_NAME for col in collections.collections)
         
@@ -2024,6 +2051,106 @@ async def get_available_states():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/analyze-location")
+async def analyze_location(request: dict):
+    """Analyze groundwater data for a specific location (lat, lng)."""
+    try:
+        lat = request.get("lat")
+        lng = request.get("lng")
+        
+        if not lat or not lng:
+            raise HTTPException(status_code=400, detail="Missing latitude or longitude")
+        
+        # Convert coordinates to state using reverse geocoding
+        state = get_state_from_coordinates(lat, lng)
+        
+        if not state:
+            raise HTTPException(status_code=404, detail="Could not determine state for the given coordinates")
+        
+        # Get state-specific analysis
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Filter data for the specific state
+        state_data = _master_df[_master_df['STATE'].str.contains(state, case=False, na=False)]
+        
+        if state_data.empty:
+            raise HTTPException(status_code=404, detail=f"No groundwater data found for {state}")
+        
+        # Generate analysis using RAG
+        query = f"Provide detailed groundwater analysis for {state} state including water levels, recharge rates, extraction patterns, and recommendations"
+        analysis = answer_query(query, "en", "system")
+        
+        # Get state visualization
+        state_plot = create_state_analysis_plots(_master_df, state)
+        
+        return {
+            "success": True,
+            "state": state,
+            "coordinates": {"lat": lat, "lng": lng},
+            "analysis": analysis,
+            "data_points": len(state_data),
+            "visualization": state_plot.to_json() if state_plot else None,
+            "summary": {
+                "total_assessment_units": len(state_data),
+                "years_covered": sorted(state_data['YEAR'].unique().tolist()) if 'YEAR' in state_data.columns else [],
+                "districts_covered": len(state_data['DISTRICT'].unique()) if 'DISTRICT' in state_data.columns else 0
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_state_from_coordinates(lat: float, lng: float) -> str:
+    """Convert coordinates to state name using a simple mapping."""
+    # India state boundaries (simplified) - ordered by priority for overlapping regions
+    state_boundaries = {
+        # Major states first to avoid conflicts
+        "Maharashtra": {"min_lat": 15.6, "max_lat": 22.0, "min_lng": 72.6, "max_lng": 80.9},
+        "Karnataka": {"min_lat": 11.7, "max_lat": 18.5, "min_lng": 74.1, "max_lng": 78.6},
+        "Gujarat": {"min_lat": 20.1, "max_lat": 24.7, "min_lng": 68.2, "max_lng": 74.5},
+        "Rajasthan": {"min_lat": 23.1, "max_lat": 30.2, "min_lng": 69.3, "max_lng": 78.2},
+        "Madhya Pradesh": {"min_lat": 21.1, "max_lat": 26.9, "min_lng": 74.0, "max_lng": 82.8},
+        "Uttar Pradesh": {"min_lat": 23.7, "max_lat": 31.1, "min_lng": 77.0, "max_lng": 84.7},
+        "Bihar": {"min_lat": 24.2, "max_lat": 27.7, "min_lng": 83.3, "max_lng": 88.8},
+        "West Bengal": {"min_lat": 21.5, "max_lat": 27.2, "min_lng": 85.5, "max_lng": 89.9},
+        "Odisha": {"min_lat": 17.5, "max_lat": 22.5, "min_lng": 81.3, "max_lng": 87.3},
+        "Chhattisgarh": {"min_lat": 17.8, "max_lat": 24.1, "min_lng": 80.2, "max_lng": 84.4},
+        "Jharkhand": {"min_lat": 21.8, "max_lat": 25.3, "min_lng": 83.2, "max_lng": 87.9},
+        "Andhra Pradesh": {"min_lat": 12.4, "max_lat": 19.9, "min_lng": 76.8, "max_lng": 84.8},
+        "Telangana": {"min_lat": 15.5, "max_lat": 19.9, "min_lng": 77.2, "max_lng": 81.1},
+        "Tamil Nadu": {"min_lat": 8.1, "max_lat": 13.1, "min_lng": 76.2, "max_lng": 80.3},
+        "Kerala": {"min_lat": 8.1, "max_lat": 12.8, "min_lng": 74.9, "max_lng": 77.4},
+        "Goa": {"min_lat": 14.8, "max_lat": 15.8, "min_lng": 73.7, "max_lng": 74.2},
+        "Haryana": {"min_lat": 28.4, "max_lat": 31.0, "min_lng": 74.4, "max_lng": 77.5},
+        "Punjab": {"min_lat": 29.5, "max_lat": 32.3, "min_lng": 73.9, "max_lng": 76.9},
+        "Himachal Pradesh": {"min_lat": 30.4, "max_lat": 33.2, "min_lng": 75.6, "max_lng": 79.1},
+        "Uttarakhand": {"min_lat": 28.7, "max_lat": 31.5, "min_lng": 77.3, "max_lng": 81.1},
+        "Delhi": {"min_lat": 28.4, "max_lat": 28.9, "min_lng": 76.8, "max_lng": 77.3},
+        # Northeastern states
+        "Assam": {"min_lat": 24.1, "max_lat": 28.2, "min_lng": 89.7, "max_lng": 96.0},
+        "Arunachal Pradesh": {"min_lat": 26.5, "max_lat": 29.4, "min_lng": 91.6, "max_lng": 97.4},
+        "Manipur": {"min_lat": 23.8, "max_lat": 25.7, "min_lng": 93.0, "max_lng": 94.8},
+        "Meghalaya": {"min_lat": 25.1, "max_lat": 26.1, "min_lng": 89.8, "max_lng": 92.8},
+        "Mizoram": {"min_lat": 21.9, "max_lat": 24.5, "min_lng": 92.2, "max_lng": 93.3},
+        "Nagaland": {"min_lat": 25.2, "max_lat": 27.0, "min_lng": 93.0, "max_lng": 95.4},
+        "Tripura": {"min_lat": 22.9, "max_lat": 24.7, "min_lng": 91.2, "max_lng": 92.3},
+        "Sikkim": {"min_lat": 27.0, "max_lat": 28.2, "min_lng": 88.0, "max_lng": 88.9}
+    }
+    
+    # Debug logging
+    print(f"Checking coordinates: lat={lat}, lng={lng}")
+    
+    for state, bounds in state_boundaries.items():
+        if (bounds["min_lat"] <= lat <= bounds["max_lat"] and 
+            bounds["min_lng"] <= lng <= bounds["max_lng"]):
+            print(f"Found state: {state} for coordinates ({lat}, {lng})")
+            return state
+    
+    print(f"No state found for coordinates: lat={lat}, lng={lng}")
+    return None
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -2045,27 +2172,55 @@ async def startup_event():
     """Initialize components on startup."""
     global _embeddings_uploaded
     try:
-        _init_components()
-        if setup_collection():
-            if not _embeddings_uploaded:
+        print("🔄 Starting application initialization...")
+        
+        # Run the synchronous initialization in a thread pool to avoid blocking
+        import asyncio
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _init_components)
+        print("✅ Core components initialized")
+        
+        # Initialize collection with timeout
+        try:
+            collection_setup = await loop.run_in_executor(None, setup_collection)
+            if collection_setup:
+                print("✅ Qdrant collection ready")
+            else:
+                print("⚠️ Qdrant collection setup failed, continuing with limited functionality")
+        except Exception as e:
+            print(f"⚠️ Qdrant collection error: {e}, continuing with limited functionality")
+            collection_setup = False
+        
+        # Initialize BM25 and embeddings
+        if collection_setup and not _embeddings_uploaded:
+            try:
                 if check_excel_embeddings_exist():
-                    _load_bm25()
+                    await loop.run_in_executor(None, _load_bm25)
                     _embeddings_uploaded = True
                     print("✅ Excel data embeddings loaded and BM25 initialized.")
                 else:
                     if _master_df is not None:
                         print("⏳ Uploading Excel data to Qdrant...")
-                        if upload_excel_to_qdrant(_master_df):
-                            _load_bm25()
+                        upload_success = await loop.run_in_executor(None, upload_excel_to_qdrant, _master_df)
+                        if upload_success:
+                            await loop.run_in_executor(None, _load_bm25)
                             _embeddings_uploaded = True
                             print("✅ Excel data processed and indexed.")
                         else:
                             print("❌ Failed to upload Excel data embeddings to Qdrant.")
-            elif _bm25_model is None:
+            except Exception as e:
+                print(f"⚠️ Embedding initialization error: {e}")
+        elif _bm25_model is None:
+            try:
                 print("📚 Embeddings previously uploaded. Initializing BM25 from existing data...")
-                _load_bm25()
+                await loop.run_in_executor(None, _load_bm25)
+                print("✅ BM25 initialized from existing data")
+            except Exception as e:
+                print(f"⚠️ BM25 initialization error: {e}")
+        
         print("🚀 Groundwater RAG API started successfully!")
     except Exception as e:
         print(f"❌ Startup error: {e}")
+        print("⚠️ Continuing with limited functionality...")
 
 # Run with: uvicorn main:app --reload --port 8000
