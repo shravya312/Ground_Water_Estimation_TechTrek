@@ -922,7 +922,7 @@ div, span, p, h1, h2, h3, h4, h5, h6, li, td, th, a, button, input, textarea, se
 
 .community-intro-split {
   display: flex;
-  align-items: center;
+    align-items: center;
   gap: 20px; /* Adjust as needed for spacing */
 }
 
@@ -937,8 +937,8 @@ div, span, p, h1, h2, h3, h4, h5, h6, li, td, th, a, button, input, textarea, se
 }
 
 .community-intro-image img {
-  width: 100%;
-  height: auto;
+    width: 100%;
+    height: auto;
   border-radius: 8px; /* Optional: adds rounded corners to the image */
 }
 
