@@ -164,6 +164,44 @@ class ChatHistory(BaseModel):
 class LanguageRequest(BaseModel):
     language: str
 
+# INGRES ChatBOT Models
+class GroundwaterQuery(BaseModel):
+    query: str
+    state: Optional[str] = None
+    district: Optional[str] = None
+    assessment_unit: Optional[str] = None
+    include_visualizations: bool = True
+    language: Optional[str] = "en"
+
+class GroundwaterResponse(BaseModel):
+    data: Dict[str, Any]
+    criticality_status: str
+    criticality_emoji: str
+    numerical_values: Dict[str, float]
+    recommendations: List[str]
+    visualizations: Optional[List[Dict[str, Any]]] = None
+    comparison_data: Optional[Dict[str, Any]] = None
+    quality_issues: Optional[List[str]] = None
+    historical_trend: Optional[Dict[str, Any]] = None
+
+class LocationAnalysisRequest(BaseModel):
+    lat: float
+    lng: float
+    include_visualizations: bool = True
+    language: Optional[str] = "en"
+
+class LocationAnalysisResponse(BaseModel):
+    state: str
+    district: Optional[str] = None
+    assessment_unit: Optional[str] = None
+    groundwater_data: Dict[str, Any]
+    criticality_status: str
+    criticality_emoji: str
+    numerical_values: Dict[str, float]
+    recommendations: List[str]
+    visualizations: Optional[List[Dict[str, Any]]] = None
+    quality_issues: Optional[List[str]] = None
+
 def _fix_meta_tensors(model):
     """Fix meta tensors by converting them to real tensors."""
     try:
@@ -2145,6 +2183,288 @@ async def analyze_location(request: dict):
             "analysis": f"An error occurred while analyzing the location: {str(e)}"
         }
 
+# INGRES ChatBOT Utility Functions
+def categorize_groundwater_status(extraction_percentage: float) -> tuple[str, str]:
+    """
+    Categorize groundwater status based on extraction percentage.
+    Returns (status, emoji) tuple.
+    """
+    if extraction_percentage < 70:
+        return "Safe", "🟢"
+    elif extraction_percentage < 90:
+        return "Semi-Critical", "🟡"
+    elif extraction_percentage < 100:
+        return "Critical", "🔴"
+    else:
+        return "Over-Exploited", "⚫"
+
+def get_groundwater_data(state: str, district: Optional[str] = None, assessment_unit: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Retrieve groundwater data for a specific location.
+    """
+    try:
+        # Load the dataset
+        df = pd.read_csv('master_groundwater_data.csv', low_memory=False)
+        
+        # Filter by state
+        filtered_df = df[df['STATE'].str.upper() == state.upper()]
+        
+        if district:
+            filtered_df = filtered_df[filtered_df['DISTRICT'].str.upper() == district.upper()]
+        
+        if assessment_unit:
+            filtered_df = filtered_df[filtered_df['ASSESSMENT UNIT'].str.upper() == assessment_unit.upper()]
+        
+        if filtered_df.empty:
+            return {"error": "No data found for the specified location"}
+        
+        # Get the first matching record
+        record = filtered_df.iloc[0]
+        
+        # Extract key metrics
+        extraction_stage = record.get('Stage of Ground Water Extraction (%) - Total - Total', 0)
+        annual_recharge = record.get('Annual Ground water Recharge (ham) - Total - Total', 0)
+        extractable_resource = record.get('Annual Extractable Ground water Resource (ham) - Total - Total', 0)
+        total_extraction = record.get('Ground Water Extraction for all uses (ha.m) - Total - Total', 0)
+        future_availability = record.get('Net Annual Ground Water Availability for Future Use (ham) - Total - Total', 0)
+        rainfall = record.get('Rainfall (mm) - Total', 0)
+        total_area = record.get('Total Geographical Area (ha) - Total - Total', 0)
+        
+        # Categorize status
+        status, emoji = categorize_groundwater_status(extraction_stage)
+        
+        # Check for quality issues
+        quality_issues = []
+        major_params = record.get('Quality Tagging - Major Parameter Present - NC', '')
+        other_params = record.get('Quality Tagging - Other Parameters Present - NC', '')
+        
+        if 'As' in str(major_params):
+            quality_issues.append("Arsenic contamination detected")
+        if 'F' in str(major_params):
+            quality_issues.append("Fluoride contamination detected")
+        if 'Saline' in str(major_params):
+            quality_issues.append("Salinity issues detected")
+        if 'Fe' in str(other_params):
+            quality_issues.append("Iron content present")
+        if 'Mn' in str(other_params):
+            quality_issues.append("Manganese content present")
+        
+        return {
+            "state": record['STATE'],
+            "district": record['DISTRICT'],
+            "assessment_unit": record.get('ASSESSMENT UNIT', ''),
+            "extraction_stage": float(extraction_stage) if pd.notna(extraction_stage) else 0,
+            "annual_recharge": float(annual_recharge) if pd.notna(annual_recharge) else 0,
+            "extractable_resource": float(extractable_resource) if pd.notna(extractable_resource) else 0,
+            "total_extraction": float(total_extraction) if pd.notna(total_extraction) else 0,
+            "future_availability": float(future_availability) if pd.notna(future_availability) else 0,
+            "rainfall": float(rainfall) if pd.notna(rainfall) else 0,
+            "total_area": float(total_area) if pd.notna(total_area) else 0,
+            "criticality_status": status,
+            "criticality_emoji": emoji,
+            "quality_issues": quality_issues
+        }
+    except Exception as e:
+        return {"error": f"Error retrieving data: {str(e)}"}
+
+def generate_groundwater_recommendations(status: str, extraction_percentage: float, quality_issues: List[str]) -> List[str]:
+    """
+    Generate recommendations based on groundwater status and quality issues.
+    """
+    recommendations = []
+    
+    if status == "Safe":
+        recommendations.extend([
+            "Continue current water management practices",
+            "Implement preventive measures to maintain current status",
+            "Monitor groundwater levels regularly",
+            "Promote water conservation awareness in the community"
+        ])
+    elif status == "Semi-Critical":
+        recommendations.extend([
+            "Implement water conservation measures immediately",
+            "Promote rainwater harvesting systems",
+            "Optimize irrigation practices and crop patterns",
+            "Monitor groundwater extraction rates closely",
+            "Consider artificial recharge techniques"
+        ])
+    elif status == "Critical":
+        recommendations.extend([
+            "Immediate water conservation measures required",
+            "Implement artificial recharge techniques",
+            "Optimize crop patterns to reduce water demand",
+            "Strict monitoring and regulation of extraction",
+            "Emergency water management protocols"
+        ])
+    else:  # Over-Exploited
+        recommendations.extend([
+            "Emergency water management measures required",
+            "Immediate artificial recharge implementation",
+            "Strict extraction controls and regulations",
+            "Crop diversification to water-efficient varieties",
+            "Community awareness and participation programs",
+            "Consider alternative water sources"
+        ])
+    
+    # Add quality-specific recommendations
+    if quality_issues:
+        if "Arsenic contamination" in quality_issues:
+            recommendations.append("Implement arsenic removal technologies")
+        if "Fluoride contamination" in quality_issues:
+            recommendations.append("Install fluoride removal systems")
+        if "Salinity issues" in quality_issues:
+            recommendations.append("Implement desalination or alternative water sources")
+        if "Iron content" in quality_issues:
+            recommendations.append("Install iron removal filters")
+        if "Manganese content" in quality_issues:
+            recommendations.append("Implement manganese removal treatment")
+    
+    return recommendations
+
+def create_groundwater_visualizations(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Create visualizations for groundwater data.
+    """
+    visualizations = []
+    
+    try:
+        # 1. Criticality Status Pie Chart
+        status = data.get('criticality_status', 'Unknown')
+        emoji = data.get('criticality_emoji', '❓')
+        
+        fig_pie = go.Figure(data=[go.Pie(
+            labels=[f"{emoji} {status}"],
+            values=[100],
+            hole=0.3,
+            marker_colors=['#2E8B57' if status == 'Safe' else 
+                          '#FFD700' if status == 'Semi-Critical' else
+                          '#FF4500' if status == 'Critical' else '#8B0000']
+        )])
+        fig_pie.update_layout(
+            title="Groundwater Status",
+            showlegend=True,
+            height=400
+        )
+        
+        visualizations.append({
+            "type": "pie_chart",
+            "title": "Groundwater Criticality Status",
+            "data": json.loads(fig_pie.to_json())
+        })
+        
+        # 2. Resource Balance Bar Chart
+        recharge = data.get('annual_recharge', 0)
+        extraction = data.get('total_extraction', 0)
+        available = data.get('future_availability', 0)
+        
+        fig_bar = go.Figure(data=[
+            go.Bar(name='Annual Recharge', x=['Groundwater Resources'], y=[recharge], marker_color='#2E8B57'),
+            go.Bar(name='Total Extraction', x=['Groundwater Resources'], y=[extraction], marker_color='#FF4500'),
+            go.Bar(name='Future Availability', x=['Groundwater Resources'], y=[available], marker_color='#4169E1')
+        ])
+        fig_bar.update_layout(
+            title="Groundwater Resource Balance (ham)",
+            barmode='group',
+            height=400
+        )
+        
+        visualizations.append({
+            "type": "bar_chart",
+            "title": "Resource Balance Analysis",
+            "data": json.loads(fig_bar.to_json())
+        })
+        
+        # 3. Extraction Efficiency Gauge
+        extraction_percentage = data.get('extraction_stage', 0)
+        
+        fig_gauge = go.Figure(go.Indicator(
+            mode = "gauge+number+delta",
+            value = extraction_percentage,
+            domain = {'x': [0, 1], 'y': [0, 1]},
+            title = {'text': "Extraction Stage (%)"},
+            delta = {'reference': 70},
+            gauge = {
+                'axis': {'range': [None, 150]},
+                'bar': {'color': "darkblue"},
+                'steps': [
+                    {'range': [0, 70], 'color': "lightgreen"},
+                    {'range': [70, 90], 'color': "yellow"},
+                    {'range': [90, 100], 'color': "orange"},
+                    {'range': [100, 150], 'color': "red"}
+                ],
+                'threshold': {
+                    'line': {'color': "red", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 100
+                }
+            }
+        ))
+        fig_gauge.update_layout(height=400)
+        
+        visualizations.append({
+            "type": "gauge_chart",
+            "title": "Extraction Stage Gauge",
+            "data": json.loads(fig_gauge.to_json())
+        })
+        
+    except Exception as e:
+        print(f"Error creating visualizations: {e}")
+    
+    return visualizations
+
+def get_state_comparison_data(state: str) -> Dict[str, Any]:
+    """
+    Get comparison data for a state against national averages.
+    """
+    try:
+        df = pd.read_csv('master_groundwater_data.csv', low_memory=False)
+        
+        # Filter state data
+        state_df = df[df['STATE'].str.upper() == state.upper()]
+        
+        if state_df.empty:
+            return {"error": "No data found for the state"}
+        
+        # Calculate state averages
+        state_avg_extraction = state_df['Stage of Ground Water Extraction (%) - Total - Total'].mean()
+        state_avg_recharge = state_df['Annual Ground water Recharge (ham) - Total - Total'].mean()
+        state_avg_extractable = state_df['Annual Extractable Ground water Resource (ham) - Total - Total'].mean()
+        
+        # Calculate national averages
+        national_avg_extraction = df['Stage of Ground Water Extraction (%) - Total - Total'].mean()
+        national_avg_recharge = df['Annual Ground water Recharge (ham) - Total - Total'].mean()
+        national_avg_extractable = df['Annual Extractable Ground water Resource (ham) - Total - Total'].mean()
+        
+        # Count districts by criticality
+        safe_count = len(state_df[state_df['Stage of Ground Water Extraction (%) - Total - Total'] < 70])
+        semi_critical_count = len(state_df[(state_df['Stage of Ground Water Extraction (%) - Total - Total'] >= 70) & 
+                                         (state_df['Stage of Ground Water Extraction (%) - Total - Total'] < 90)])
+        critical_count = len(state_df[(state_df['Stage of Ground Water Extraction (%) - Total - Total'] >= 90) & 
+                                    (state_df['Stage of Ground Water Extraction (%) - Total - Total'] < 100)])
+        over_exploited_count = len(state_df[state_df['Stage of Ground Water Extraction (%) - Total - Total'] >= 100])
+        
+        return {
+            "state_averages": {
+                "extraction_stage": float(state_avg_extraction),
+                "annual_recharge": float(state_avg_recharge),
+                "extractable_resource": float(state_avg_extractable)
+            },
+            "national_averages": {
+                "extraction_stage": float(national_avg_extraction),
+                "annual_recharge": float(national_avg_recharge),
+                "extractable_resource": float(national_avg_extractable)
+            },
+            "district_count": {
+                "total": len(state_df),
+                "safe": int(safe_count),
+                "semi_critical": int(semi_critical_count),
+                "critical": int(critical_count),
+                "over_exploited": int(over_exploited_count)
+            }
+        }
+    except Exception as e:
+        return {"error": f"Error generating comparison data: {str(e)}"}
+
 def get_state_from_coordinates(lat: float, lng: float) -> str:
     """Convert coordinates to state name using highly accurate boundary mapping."""
     
@@ -2345,6 +2665,193 @@ def get_state_from_coordinates(lat: float, lng: float) -> str:
     
     print(f"No state found for coordinates: lat={lat}, lng={lng}")
     return None
+
+# INGRES ChatBOT Endpoints
+@app.post("/ingres/query", response_model=GroundwaterResponse)
+async def query_groundwater_data(request: GroundwaterQuery):
+    """
+    Query groundwater data using INGRES ChatBOT.
+    Provides intelligent analysis with criticality assessment and recommendations.
+    """
+    try:
+        # Get groundwater data
+        data = get_groundwater_data(
+            state=request.state,
+            district=request.district,
+            assessment_unit=request.assessment_unit
+        )
+        
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        
+        # Generate recommendations
+        recommendations = generate_groundwater_recommendations(
+            status=data["criticality_status"],
+            extraction_percentage=data["extraction_stage"],
+            quality_issues=data["quality_issues"]
+        )
+        
+        # Create visualizations if requested
+        visualizations = []
+        if request.include_visualizations:
+            visualizations = create_groundwater_visualizations(data)
+        
+        # Get comparison data
+        comparison_data = get_state_comparison_data(data["state"])
+        
+        # Prepare numerical values
+        numerical_values = {
+            "extraction_stage": data["extraction_stage"],
+            "annual_recharge": data["annual_recharge"],
+            "extractable_resource": data["extractable_resource"],
+            "total_extraction": data["total_extraction"],
+            "future_availability": data["future_availability"],
+            "rainfall": data["rainfall"],
+            "total_area": data["total_area"]
+        }
+        
+        return GroundwaterResponse(
+            data=data,
+            criticality_status=data["criticality_status"],
+            criticality_emoji=data["criticality_emoji"],
+            numerical_values=numerical_values,
+            recommendations=recommendations,
+            visualizations=visualizations,
+            comparison_data=comparison_data,
+            quality_issues=data["quality_issues"]
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing groundwater query: {str(e)}")
+
+@app.post("/ingres/location-analysis", response_model=LocationAnalysisResponse)
+async def analyze_location_groundwater(request: LocationAnalysisRequest):
+    """
+    Analyze groundwater data for a specific location using coordinates.
+    """
+    try:
+        # Get state from coordinates
+        state = get_state_from_coordinates(request.lat, request.lng)
+        
+        if not state:
+            raise HTTPException(status_code=404, detail="Location not found in India")
+        
+        # Get groundwater data for the state
+        data = get_groundwater_data(state=state)
+        
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        
+        # Generate recommendations
+        recommendations = generate_groundwater_recommendations(
+            status=data["criticality_status"],
+            extraction_percentage=data["extraction_stage"],
+            quality_issues=data["quality_issues"]
+        )
+        
+        # Create visualizations if requested
+        visualizations = []
+        if request.include_visualizations:
+            visualizations = create_groundwater_visualizations(data)
+        
+        # Prepare numerical values
+        numerical_values = {
+            "extraction_stage": data["extraction_stage"],
+            "annual_recharge": data["annual_recharge"],
+            "extractable_resource": data["extractable_resource"],
+            "total_extraction": data["total_extraction"],
+            "future_availability": data["future_availability"],
+            "rainfall": data["rainfall"],
+            "total_area": data["total_area"]
+        }
+        
+        return LocationAnalysisResponse(
+            state=state,
+            district=data.get("district"),
+            assessment_unit=data.get("assessment_unit"),
+            groundwater_data=data,
+            criticality_status=data["criticality_status"],
+            criticality_emoji=data["criticality_emoji"],
+            numerical_values=numerical_values,
+            recommendations=recommendations,
+            visualizations=visualizations,
+            quality_issues=data["quality_issues"]
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing location: {str(e)}")
+
+@app.get("/ingres/states")
+async def get_available_states():
+    """
+    Get list of all available states in the dataset.
+    """
+    try:
+        df = pd.read_csv('master_groundwater_data.csv', low_memory=False)
+        states = sorted(df['STATE'].unique().tolist())
+        return {"states": states, "count": len(states)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving states: {str(e)}")
+
+@app.get("/ingres/districts/{state}")
+async def get_districts_by_state(state: str):
+    """
+    Get list of districts for a specific state.
+    """
+    try:
+        df = pd.read_csv('master_groundwater_data.csv', low_memory=False)
+        state_df = df[df['STATE'].str.upper() == state.upper()]
+        
+        if state_df.empty:
+            raise HTTPException(status_code=404, detail=f"No data found for state: {state}")
+        
+        districts = sorted(state_df['DISTRICT'].unique().tolist())
+        return {"state": state, "districts": districts, "count": len(districts)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving districts: {str(e)}")
+
+@app.get("/ingres/criticality-summary")
+async def get_criticality_summary():
+    """
+    Get national summary of groundwater criticality status.
+    """
+    try:
+        df = pd.read_csv('master_groundwater_data.csv', low_memory=False)
+        
+        # Calculate criticality distribution
+        extraction_data = df['Stage of Ground Water Extraction (%) - Total - Total'].dropna()
+        
+        safe_count = len(extraction_data[extraction_data < 70])
+        semi_critical_count = len(extraction_data[(extraction_data >= 70) & (extraction_data < 90)])
+        critical_count = len(extraction_data[(extraction_data >= 90) & (extraction_data < 100)])
+        over_exploited_count = len(extraction_data[extraction_data >= 100])
+        
+        total_districts = len(extraction_data)
+        
+        return {
+            "total_districts": int(total_districts),
+            "criticality_distribution": {
+                "safe": {
+                    "count": int(safe_count),
+                    "percentage": round(safe_count / total_districts * 100, 2)
+                },
+                "semi_critical": {
+                    "count": int(semi_critical_count),
+                    "percentage": round(semi_critical_count / total_districts * 100, 2)
+                },
+                "critical": {
+                    "count": int(critical_count),
+                    "percentage": round(critical_count / total_districts * 100, 2)
+                },
+                "over_exploited": {
+                    "count": int(over_exploited_count),
+                    "percentage": round(over_exploited_count / total_districts * 100, 2)
+                }
+            },
+            "national_average_extraction": round(extraction_data.mean(), 2)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating criticality summary: {str(e)}")
 
 @app.get("/health")
 async def health_check():
