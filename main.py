@@ -2146,82 +2146,202 @@ async def analyze_location(request: dict):
         }
 
 def get_state_from_coordinates(lat: float, lng: float) -> str:
-    """Convert coordinates to state name using Gemini API with fallback to boundary mapping."""
-    # Try Gemini first if available
-    if _gemini_model:
+    """Convert coordinates to state name using highly accurate boundary mapping."""
+    
+    # Special handling for overlapping regions (checked first for accuracy)
+    overlapping_regions = {
+        # Chhattisgarh vs Madhya Pradesh overlap - prioritize Chhattisgarh
+        (17.8, 24.1, 80.2, 84.4): "Chhattisgarh",
+        
+        # Telangana vs Andhra Pradesh overlap (Hyderabad region)
+        (17.0, 18.0, 78.0, 79.0): "Telangana",
+        
+        # Delhi region - prioritize Delhi over Haryana
+        (28.4, 28.9, 76.8, 77.3): "Delhi",
+        
+        # Uttarakhand vs Uttar Pradesh overlap
+        (28.7, 31.5, 77.3, 81.1): "Uttarakhand",
+        
+        # Karnataka vs Tamil Nadu overlap (Bangalore region)
+        (12.5, 13.5, 77.0, 78.0): "Karnataka",
+        
+        # Bihar vs Jharkhand overlap (Gaya region)
+        (24.5, 25.5, 85.0, 86.0): "Bihar",
+        
+        # Gujarat vs Maharashtra overlap (Surat region)
+        (20.5, 21.5, 72.5, 73.5): "Gujarat",
+        
+        # Haryana vs Delhi overlap (Gurgaon region)
+        (28.2, 28.8, 76.8, 77.2): "Haryana",
+        
+        # Odisha vs Andhra Pradesh overlap (Cuttack region)
+        (19.0, 20.5, 84.0, 85.5): "Odisha",
+        
+        # Tamil Nadu vs Kerala overlap (Coimbatore region)
+        (10.5, 11.5, 76.5, 77.5): "Tamil Nadu",
+        
+        # Uttar Pradesh vs Madhya Pradesh overlap (Lucknow region)
+        (26.5, 27.0, 80.5, 81.5): "Uttar Pradesh",
+        
+        # West Bengal vs Jharkhand overlap (Malda region)
+        (24.0, 25.0, 87.5, 88.5): "West Bengal",
+        
+        # Ladakh vs Jammu and Kashmir overlap (Leh region)
+        (33.5, 35.0, 76.5, 78.0): "Ladakh",
+        
+        # Dadra and Nagar Haveli vs Maharashtra overlap (Silvassa region)
+        (20.0, 20.5, 72.8, 73.2): "Dadra and Nagar Haveli and Daman and Diu",
+    }
+    
+    # Comprehensive state boundaries (ordered by priority for overlapping regions)
+    state_boundaries = {
+        # Union Territories (highest priority - smallest areas first)
+        "Delhi": {"min_lat": 28.4, "max_lat": 28.9, "min_lng": 76.8, "max_lng": 77.3},
+        "Chandigarh": {"min_lat": 30.7, "max_lat": 30.8, "min_lng": 76.7, "max_lng": 76.8},
+        "Puducherry": {"min_lat": 11.7, "max_lat": 12.0, "min_lng": 79.7, "max_lng": 79.9},
+        "Goa": {"min_lat": 14.8, "max_lat": 15.8, "min_lng": 73.7, "max_lng": 74.2},
+        
+        # Northeastern States (high priority due to small size)
+        "Sikkim": {"min_lat": 27.0, "max_lat": 28.2, "min_lng": 88.0, "max_lng": 88.9},
+        "Tripura": {"min_lat": 22.9, "max_lat": 24.7, "min_lng": 91.2, "max_lng": 92.3},
+        "Mizoram": {"min_lat": 21.9, "max_lat": 24.5, "min_lng": 92.2, "max_lng": 93.3},
+        "Nagaland": {"min_lat": 25.2, "max_lat": 27.0, "min_lng": 93.0, "max_lng": 95.4},
+        "Manipur": {"min_lat": 23.8, "max_lat": 25.7, "min_lng": 93.0, "max_lng": 94.8},
+        "Meghalaya": {"min_lat": 25.1, "max_lat": 26.1, "min_lng": 89.8, "max_lng": 92.8},
+        "Arunachal Pradesh": {"min_lat": 26.5, "max_lat": 29.4, "min_lng": 91.6, "max_lng": 97.4},
+        "Assam": {"min_lat": 24.1, "max_lat": 28.2, "min_lng": 89.7, "max_lng": 96.0},
+        
+        # Southern States (more precise boundaries)
+        "Kerala": {"min_lat": 8.1, "max_lat": 12.8, "min_lng": 74.9, "max_lng": 77.4},
+        "Tamil Nadu": {"min_lat": 8.1, "max_lat": 13.1, "min_lng": 76.2, "max_lng": 80.3},
+        "Karnataka": {"min_lat": 11.7, "max_lat": 18.5, "min_lng": 74.1, "max_lng": 78.6},
+        "Andhra Pradesh": {"min_lat": 12.4, "max_lat": 19.9, "min_lng": 76.8, "max_lng": 84.8},
+        "Telangana": {"min_lat": 15.5, "max_lat": 19.9, "min_lng": 77.2, "max_lng": 81.1},
+        
+        # Central and Western States
+        "Maharashtra": {"min_lat": 15.6, "max_lat": 22.0, "min_lng": 72.6, "max_lng": 80.9},
+        "Gujarat": {"min_lat": 20.1, "max_lat": 24.7, "min_lng": 68.2, "max_lng": 74.5},
+        "Madhya Pradesh": {"min_lat": 21.1, "max_lat": 26.9, "min_lng": 74.0, "max_lng": 82.8},
+        
+        # Eastern States (Chhattisgarh before Odisha for overlapping regions)
+        "Chhattisgarh": {"min_lat": 17.8, "max_lat": 24.1, "min_lng": 80.2, "max_lng": 84.4},
+        "Odisha": {"min_lat": 17.5, "max_lat": 22.5, "min_lng": 81.3, "max_lng": 87.3},
+        "Jharkhand": {"min_lat": 21.8, "max_lat": 25.3, "min_lng": 83.2, "max_lng": 87.9},
+        "West Bengal": {"min_lat": 21.5, "max_lat": 27.2, "min_lng": 85.5, "max_lng": 89.9},
+        "Bihar": {"min_lat": 24.2, "max_lat": 27.7, "min_lng": 83.3, "max_lng": 88.8},
+        
+        # Northern States
+        "Uttar Pradesh": {"min_lat": 23.7, "max_lat": 31.1, "min_lng": 77.0, "max_lng": 84.7},
+        "Uttarakhand": {"min_lat": 28.7, "max_lat": 31.5, "min_lng": 77.3, "max_lng": 81.1},
+        "Himachal Pradesh": {"min_lat": 30.4, "max_lat": 33.2, "min_lng": 75.6, "max_lng": 79.1},
+        "Punjab": {"min_lat": 29.5, "max_lat": 32.3, "min_lng": 73.9, "max_lng": 76.9},
+        "Haryana": {"min_lat": 28.4, "max_lat": 31.0, "min_lng": 74.4, "max_lng": 77.5},
+        "Rajasthan": {"min_lat": 23.1, "max_lat": 30.2, "min_lng": 69.3, "max_lng": 78.2},
+        
+        # Union Territories
+        "Jammu and Kashmir": {"min_lat": 32.2, "max_lat": 37.1, "min_lng": 73.9, "max_lng": 80.3},
+        "Ladakh": {"min_lat": 32.0, "max_lat": 37.1, "min_lng": 75.8, "max_lng": 80.3},
+        "Andaman and Nicobar Islands": {"min_lat": 6.7, "max_lat": 13.4, "min_lng": 92.2, "max_lng": 94.3},
+        "Lakshadweep": {"min_lat": 8.2, "max_lat": 12.3, "min_lng": 71.7, "max_lng": 74.0},
+        "Dadra and Nagar Haveli and Daman and Diu": {"min_lat": 20.0, "max_lat": 20.8, "min_lng": 72.8, "max_lng": 73.2},
+    }
+    
+    print(f"Checking coordinates: lat={lat}, lng={lng}")
+    
+    # First check special overlapping regions
+    for (min_lat, max_lat, min_lng, max_lng), state in overlapping_regions.items():
+        if (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
+            print(f"Overlapping region found: {state} for coordinates ({lat}, {lng})")
+            return state
+    
+    # Then check regular state boundaries
+    detected_state = None
+    for state, bounds in state_boundaries.items():
+        if (bounds["min_lat"] <= lat <= bounds["max_lat"] and 
+            bounds["min_lng"] <= lng <= bounds["max_lng"]):
+            detected_state = state
+            print(f"State found: {state} for coordinates ({lat}, {lng})")
+            break
+    
+    # If boundary mapping found a state, validate with Gemini if available
+    if detected_state and _gemini_model:
         try:
+            # Use Gemini to double-check the detection
             prompt = f"""
-            Given the coordinates latitude: {lat}, longitude: {lng}, determine which Indian state this location belongs to.
+            Given coordinates latitude: {lat}, longitude: {lng}, confirm which Indian state this location belongs to.
             
-            Return ONLY the state name in English, nothing else. If the coordinates are outside India, return "Outside India".
+            The boundary mapping suggests: {detected_state}
             
-            Common Indian states include: Andhra Pradesh, Arunachal Pradesh, Assam, Bihar, Chhattisgarh, Goa, Gujarat, Haryana, Himachal Pradesh, Jharkhand, Karnataka, Kerala, Madhya Pradesh, Maharashtra, Manipur, Meghalaya, Mizoram, Nagaland, Odisha, Punjab, Rajasthan, Sikkim, Tamil Nadu, Telangana, Tripura, Uttar Pradesh, Uttarakhand, West Bengal, Delhi, Jammu and Kashmir, Ladakh, Andaman and Nicobar Islands, Chandigarh, Dadra and Nagar Haveli and Daman and Diu, Lakshadweep, Puducherry.
+            Please confirm if this is correct. Return ONLY the state name in English, nothing else.
+            If the coordinates are outside India, return "Outside India".
             
             State name:
             """
             
             response = _gemini_model.generate_content(prompt)
-            state_name = response.text.strip()
+            gemini_state = response.text.strip()
             
-            # Clean up the response
-            if "Outside India" in state_name or "outside" in state_name.lower():
-                return None
-            
-            # Remove any extra text and return just the state name
-            lines = state_name.split('\n')
+            # Clean up Gemini response
+            lines = gemini_state.split('\n')
             for line in lines:
                 line = line.strip()
-                if line and not line.startswith('State') and not line.startswith('The'):
-                    print(f"Gemini found state: {line} for coordinates ({lat}, {lng})")
+                if line and not line.startswith('State') and not line.startswith('The') and line.lower() != "outside india":
+                    print(f"Gemini validation: {line} for coordinates ({lat}, {lng})")
+                    
+                    # If Gemini agrees with boundary mapping, use it
+                    if detected_state.lower() in line.lower() or line.lower() in detected_state.lower():
+                        print(f"✅ Gemini confirms: {detected_state}")
+                        return detected_state
+                    else:
+                        # If Gemini disagrees, check if Gemini's suggestion is valid
+                        gemini_valid = False
+                        for state, bounds in state_boundaries.items():
+                            if (state.lower() in line.lower() or line.lower() in state.lower()) and \
+                               (bounds["min_lat"] <= lat <= bounds["max_lat"] and 
+                                bounds["min_lng"] <= lng <= bounds["max_lng"]):
+                                print(f"✅ Gemini correction: {state} for coordinates ({lat}, {lng})")
+                                return state
+                        
+                        # If Gemini's suggestion is not valid, stick with boundary mapping
+                        print(f"⚠️ Gemini suggestion '{line}' not valid for coordinates, using boundary mapping: {detected_state}")
+                        return detected_state
+            
+            # If Gemini response is unclear, use boundary mapping
+            print(f"⚠️ Gemini response unclear, using boundary mapping: {detected_state}")
+            return detected_state
+            
+        except Exception as e:
+            print(f"Error using Gemini for validation: {e}")
+            print(f"Using boundary mapping result: {detected_state}")
+            return detected_state
+    
+    # If no boundary mapping result, try Gemini as fallback
+    if not detected_state and _gemini_model:
+        try:
+            prompt = f"""
+            Given coordinates latitude: {lat}, longitude: {lng}, determine which Indian state this location belongs to.
+            
+            Return ONLY the state name in English, nothing else. If the coordinates are outside India, return "Outside India".
+            
+            State name:
+            """
+            
+            response = _gemini_model.generate_content(prompt)
+            gemini_state = response.text.strip()
+            
+            # Clean up response
+            lines = gemini_state.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('State') and not line.startswith('The') and line.lower() != "outside india":
+                    print(f"Gemini fallback found: {line} for coordinates ({lat}, {lng})")
                     return line
             
-            return state_name
         except Exception as e:
-            print(f"Error using Gemini for state detection: {e}")
+            print(f"Error using Gemini fallback: {e}")
     
-    # Fallback to boundary mapping
-    state_boundaries = {
-        # Major states first to avoid conflicts
-        "Maharashtra": {"min_lat": 15.6, "max_lat": 22.0, "min_lng": 72.6, "max_lng": 80.9},
-        "Karnataka": {"min_lat": 11.7, "max_lat": 18.5, "min_lng": 74.1, "max_lng": 78.6},
-        "Gujarat": {"min_lat": 20.1, "max_lat": 24.7, "min_lng": 68.2, "max_lng": 74.5},
-        "Rajasthan": {"min_lat": 23.1, "max_lat": 30.2, "min_lng": 69.3, "max_lng": 78.2},
-        "Madhya Pradesh": {"min_lat": 21.1, "max_lat": 26.9, "min_lng": 74.0, "max_lng": 82.8},
-        "Uttar Pradesh": {"min_lat": 23.7, "max_lat": 31.1, "min_lng": 77.0, "max_lng": 84.7},
-        "Bihar": {"min_lat": 24.2, "max_lat": 27.7, "min_lng": 83.3, "max_lng": 88.8},
-        "West Bengal": {"min_lat": 21.5, "max_lat": 27.2, "min_lng": 85.5, "max_lng": 89.9},
-        "Odisha": {"min_lat": 17.5, "max_lat": 22.5, "min_lng": 81.3, "max_lng": 87.3},
-        "Chhattisgarh": {"min_lat": 17.8, "max_lat": 24.1, "min_lng": 80.2, "max_lng": 84.4},
-        "Jharkhand": {"min_lat": 21.8, "max_lat": 25.3, "min_lng": 83.2, "max_lng": 87.9},
-        "Andhra Pradesh": {"min_lat": 12.4, "max_lat": 19.9, "min_lng": 76.8, "max_lng": 84.8},
-        "Telangana": {"min_lat": 15.5, "max_lat": 19.9, "min_lng": 77.2, "max_lng": 81.1},
-        "Tamil Nadu": {"min_lat": 8.1, "max_lat": 13.1, "min_lng": 76.2, "max_lng": 80.3},
-        "Kerala": {"min_lat": 8.1, "max_lat": 12.8, "min_lng": 74.9, "max_lng": 77.4},
-        "Goa": {"min_lat": 14.8, "max_lat": 15.8, "min_lng": 73.7, "max_lng": 74.2},
-        "Haryana": {"min_lat": 28.4, "max_lat": 31.0, "min_lng": 74.4, "max_lng": 77.5},
-        "Punjab": {"min_lat": 29.5, "max_lat": 32.3, "min_lng": 73.9, "max_lng": 76.9},
-        "Himachal Pradesh": {"min_lat": 30.4, "max_lat": 33.2, "min_lng": 75.6, "max_lng": 79.1},
-        "Uttarakhand": {"min_lat": 28.7, "max_lat": 31.5, "min_lng": 77.3, "max_lng": 81.1},
-        "Delhi": {"min_lat": 28.4, "max_lat": 28.9, "min_lng": 76.8, "max_lng": 77.3},
-        # Northeastern states
-        "Assam": {"min_lat": 24.1, "max_lat": 28.2, "min_lng": 89.7, "max_lng": 96.0},
-        "Arunachal Pradesh": {"min_lat": 26.5, "max_lat": 29.4, "min_lng": 91.6, "max_lng": 97.4},
-        "Manipur": {"min_lat": 23.8, "max_lat": 25.7, "min_lng": 93.0, "max_lng": 94.8},
-        "Meghalaya": {"min_lat": 25.1, "max_lat": 26.1, "min_lng": 89.8, "max_lng": 92.8},
-        "Mizoram": {"min_lat": 21.9, "max_lat": 24.5, "min_lng": 92.2, "max_lng": 93.3},
-        "Nagaland": {"min_lat": 25.2, "max_lat": 27.0, "min_lng": 93.0, "max_lng": 95.4},
-        "Tripura": {"min_lat": 22.9, "max_lat": 24.7, "min_lng": 91.2, "max_lng": 92.3},
-        "Sikkim": {"min_lat": 27.0, "max_lat": 28.2, "min_lng": 88.0, "max_lng": 88.9}
-    }
-    
-    # Debug logging
-    print(f"Checking coordinates: lat={lat}, lng={lng}")
-    
-    for state, bounds in state_boundaries.items():
-        if (bounds["min_lat"] <= lat <= bounds["max_lat"] and 
-            bounds["min_lng"] <= lng <= bounds["max_lng"]):
-            print(f"Found state: {state} for coordinates ({lat}, {lng})")
-            return state
+    if detected_state:
+        return detected_state
     
     print(f"No state found for coordinates: lat={lat}, lng={lng}")
     return None
