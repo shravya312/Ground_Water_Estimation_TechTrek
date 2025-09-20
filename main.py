@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import re
 import numpy as np
@@ -15,7 +16,7 @@ import torch
 import json
 import hashlib
 import uuid
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any, Union
 from langdetect import detect_langs, LangDetectException
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
