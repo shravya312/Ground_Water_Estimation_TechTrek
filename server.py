@@ -380,6 +380,216 @@ def answer_query(query: str) -> str:
     return answer
 
 
+def get_state_from_coordinates(lat, lng):
+    """Get state name from coordinates using Gemini API."""
+    if not _gemini_model:
+        # Fallback to client-side state detection using the same logic
+        state_boundaries = {
+            "Maharashtra": {"min_lat": 15.6, "max_lat": 22.0, "min_lng": 72.6, "max_lng": 80.9},
+            "Karnataka": {"min_lat": 11.7, "max_lat": 18.5, "min_lng": 74.1, "max_lng": 78.6},
+            "Gujarat": {"min_lat": 20.1, "max_lat": 24.7, "min_lng": 68.2, "max_lng": 74.5},
+            "Rajasthan": {"min_lat": 23.1, "max_lat": 30.2, "min_lng": 69.3, "max_lng": 78.2},
+            "Madhya Pradesh": {"min_lat": 21.1, "max_lat": 26.9, "min_lng": 74.0, "max_lng": 82.8},
+            "Uttar Pradesh": {"min_lat": 23.7, "max_lat": 31.1, "min_lng": 77.0, "max_lng": 84.7},
+            "Bihar": {"min_lat": 24.2, "max_lat": 27.7, "min_lng": 83.3, "max_lng": 88.8},
+            "West Bengal": {"min_lat": 21.5, "max_lat": 27.2, "min_lng": 85.5, "max_lng": 89.9},
+            "Odisha": {"min_lat": 17.5, "max_lat": 22.5, "min_lng": 81.3, "max_lng": 87.3},
+            "Chhattisgarh": {"min_lat": 17.8, "max_lat": 24.1, "min_lng": 80.2, "max_lng": 84.4},
+            "Jharkhand": {"min_lat": 21.8, "max_lat": 25.3, "min_lng": 83.2, "max_lng": 87.9},
+            "Andhra Pradesh": {"min_lat": 12.4, "max_lat": 19.9, "min_lng": 76.8, "max_lng": 84.8},
+            "Telangana": {"min_lat": 15.5, "max_lat": 19.9, "min_lng": 77.2, "max_lng": 81.1},
+            "Tamil Nadu": {"min_lat": 8.1, "max_lat": 13.1, "min_lng": 76.2, "max_lng": 80.3},
+            "Kerala": {"min_lat": 8.1, "max_lat": 12.8, "min_lng": 74.9, "max_lng": 77.4},
+            "Goa": {"min_lat": 14.8, "max_lat": 15.8, "min_lng": 73.7, "max_lng": 74.2},
+            "Haryana": {"min_lat": 28.4, "max_lat": 31.0, "min_lng": 74.4, "max_lng": 77.5},
+            "Punjab": {"min_lat": 29.5, "max_lat": 32.3, "min_lng": 73.9, "max_lng": 76.9},
+            "Himachal Pradesh": {"min_lat": 30.4, "max_lat": 33.2, "min_lng": 75.6, "max_lng": 79.1},
+            "Uttarakhand": {"min_lat": 28.7, "max_lat": 31.5, "min_lng": 77.3, "max_lng": 81.1},
+            "Delhi": {"min_lat": 28.4, "max_lat": 28.9, "min_lng": 76.8, "max_lng": 77.3},
+            "Assam": {"min_lat": 24.1, "max_lat": 28.2, "min_lng": 89.7, "max_lng": 96.0},
+            "Arunachal Pradesh": {"min_lat": 26.5, "max_lat": 29.4, "min_lng": 91.6, "max_lng": 97.4},
+            "Manipur": {"min_lat": 23.8, "max_lat": 25.7, "min_lng": 93.0, "max_lng": 94.8},
+            "Meghalaya": {"min_lat": 25.1, "max_lat": 26.1, "min_lng": 89.8, "max_lng": 92.8},
+            "Mizoram": {"min_lat": 21.9, "max_lat": 24.5, "min_lng": 92.2, "max_lng": 93.3},
+            "Nagaland": {"min_lat": 25.2, "max_lat": 27.0, "min_lng": 93.0, "max_lng": 95.4},
+            "Tripura": {"min_lat": 22.9, "max_lat": 24.7, "min_lng": 91.2, "max_lng": 92.3},
+            "Sikkim": {"min_lat": 27.0, "max_lat": 28.2, "min_lng": 88.0, "max_lng": 88.9}
+        }
+        
+        for state, bounds in state_boundaries.items():
+            if bounds["min_lat"] <= lat <= bounds["max_lat"] and bounds["min_lng"] <= lng <= bounds["max_lng"]:
+                return state
+        
+        return None
+    
+    prompt = f"""
+    Given the coordinates latitude: {lat}, longitude: {lng}, determine which Indian state this location belongs to.
+    
+    Return ONLY the state name in English, nothing else. If the coordinates are outside India, return "Outside India".
+    
+    Common Indian states include: Andhra Pradesh, Arunachal Pradesh, Assam, Bihar, Chhattisgarh, Goa, Gujarat, Haryana, Himachal Pradesh, Jharkhand, Karnataka, Kerala, Madhya Pradesh, Maharashtra, Manipur, Meghalaya, Mizoram, Nagaland, Odisha, Punjab, Rajasthan, Sikkim, Tamil Nadu, Telangana, Tripura, Uttar Pradesh, Uttarakhand, West Bengal, Delhi, Jammu and Kashmir, Ladakh, Andaman and Nicobar Islands, Chandigarh, Dadra and Nagar Haveli and Daman and Diu, Lakshadweep, Puducherry.
+    
+    State name:
+    """
+    
+    try:
+        response = _gemini_model.generate_content(prompt)
+        state_name = response.text.strip()
+        
+        # Clean up the response
+        if "Outside India" in state_name or "outside" in state_name.lower():
+            return None
+        
+        # Remove any extra text and return just the state name
+        lines = state_name.split('\n')
+        for line in lines:
+            line = line.strip()
+            if line and not line.startswith('State') and not line.startswith('The'):
+                return line
+        
+        return state_name
+    except Exception as e:
+        print(f"Error getting state from coordinates: {e}")
+        return None
+
+def analyze_location_data(state_name):
+    """Analyze groundwater data for a specific state."""
+    if not state_name or not _master_df is not None:
+        return None
+    
+    # Filter data for the specific state
+    state_data = _master_df[_master_df['STATE'].str.contains(state_name, case=False, na=False)]
+    
+    if state_data.empty:
+        return None
+    
+    # Calculate summary statistics
+    summary = {
+        'districts_covered': state_data['DISTRICT'].nunique(),
+        'years_covered': sorted(state_data['Assessment_Year'].unique().tolist()),
+        'total_assessment_units': len(state_data)
+    }
+    
+    # Get key groundwater metrics
+    key_metrics = {}
+    numerical_columns = [
+        'Annual Ground water Recharge (ham) - Total - Total',
+        'Annual Extractable Ground water Resource (ham) - Total - Total',
+        'Ground Water Extraction for all uses (ha.m) - Total - Total',
+        'Stage of Ground Water Extraction (%) - Total - Total',
+        'Net Annual Ground Water Availability for Future Use (ham) - Total - Total',
+        'Total Ground Water Availability in the area (ham) - Other Parameters Present - Fresh',
+        'Total Ground Water Availability in the area (ham) - Other Parameters Present - Saline'
+    ]
+    
+    for col in numerical_columns:
+        if col in state_data.columns:
+            numeric_values = pd.to_numeric(state_data[col], errors='coerce').dropna()
+            if not numeric_values.empty:
+                key_metrics[col] = {
+                    'mean': float(numeric_values.mean()),
+                    'min': float(numeric_values.min()),
+                    'max': float(numeric_values.max()),
+                    'count': len(numeric_values)
+                }
+    
+    return {
+        'summary': summary,
+        'key_metrics': key_metrics,
+        'data_points': len(state_data)
+    }
+
+def generate_location_analysis(state_name, analysis_data):
+    """Generate a comprehensive analysis of groundwater data for the location."""
+    if not _gemini_model or not analysis_data:
+        return f"Groundwater data analysis for {state_name}:\n\nData points: {analysis_data.get('data_points', 0)}\nDistricts covered: {analysis_data.get('summary', {}).get('districts_covered', 0)}"
+    
+    # Format the data for Gemini
+    data_summary = []
+    data_summary.append(f"State: {state_name}")
+    data_summary.append(f"Total Assessment Units: {analysis_data.get('data_points', 0)}")
+    data_summary.append(f"Districts Covered: {analysis_data.get('summary', {}).get('districts_covered', 0)}")
+    data_summary.append(f"Years Covered: {', '.join(map(str, analysis_data.get('summary', {}).get('years_covered', [])))}")
+    data_summary.append("")
+    
+    # Add key metrics
+    key_metrics = analysis_data.get('key_metrics', {})
+    if key_metrics:
+        data_summary.append("Key Groundwater Metrics (averages):")
+        for metric, stats in key_metrics.items():
+            if stats['count'] > 0:
+                data_summary.append(f"- {metric}: {stats['mean']:.2f} (range: {stats['min']:.2f} - {stats['max']:.2f})")
+        data_summary.append("")
+    
+    context_str = "\n".join(data_summary)
+    
+    prompt = f"""
+    You are an expert groundwater analyst. Analyze the following groundwater data for {state_name} and provide a comprehensive summary.
+    
+    Data Summary:
+    {context_str}
+    
+    Please provide:
+    1. A brief overview of the groundwater situation in {state_name}
+    2. Key findings about groundwater availability, extraction, and recharge
+    3. Any notable patterns or concerns
+    4. Recommendations for groundwater management
+    
+    Keep the response concise but informative, focusing on the most important insights.
+    """
+    
+    try:
+        response = _gemini_model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        return f"Error generating analysis: {str(e)}"
+
+@app.post("/analyze-location")
+def analyze_location():
+    try:
+        data = request.get_json(silent=True) or {}
+        lat = data.get("lat")
+        lng = data.get("lng")
+        
+        if lat is None or lng is None:
+            return jsonify({"error": "Missing 'lat' or 'lng' parameters"}), 400
+        
+        # Initialize components
+        _init_components()
+        
+        # Get state from coordinates
+        state_name = get_state_from_coordinates(lat, lng)
+        
+        if not state_name:
+            return jsonify({
+                "error": "Could not determine state from coordinates",
+                "state": None,
+                "analysis": "The provided coordinates are outside India or could not be mapped to a specific state."
+            })
+        
+        # Analyze groundwater data for the state
+        analysis_data = analyze_location_data(state_name)
+        
+        if not analysis_data:
+            return jsonify({
+                "error": f"No groundwater data found for {state_name}",
+                "state": state_name,
+                "analysis": f"No groundwater assessment data is available for {state_name} in our database."
+            })
+        
+        # Generate comprehensive analysis
+        analysis_text = generate_location_analysis(state_name, analysis_data)
+        
+        return jsonify({
+            "state": state_name,
+            "data_points": analysis_data.get('data_points', 0),
+            "summary": analysis_data.get('summary', {}),
+            "analysis": analysis_text
+        })
+        
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
 @app.post("/ask")
 def ask():
     try:

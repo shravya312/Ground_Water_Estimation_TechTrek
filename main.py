@@ -2065,7 +2065,11 @@ async def analyze_location(request: dict):
         state = get_state_from_coordinates(lat, lng)
         
         if not state:
-            raise HTTPException(status_code=404, detail="Could not determine state for the given coordinates")
+            return {
+                "error": "Could not determine state from coordinates",
+                "state": None,
+                "analysis": "The provided coordinates are outside India or could not be mapped to a specific state."
+            }
         
         # Get state-specific analysis
         _init_components()
@@ -2076,35 +2080,106 @@ async def analyze_location(request: dict):
         state_data = _master_df[_master_df['STATE'].str.contains(state, case=False, na=False)]
         
         if state_data.empty:
-            raise HTTPException(status_code=404, detail=f"No groundwater data found for {state}")
+            return {
+                "error": f"No groundwater data found for {state}",
+                "state": state,
+                "analysis": f"No groundwater assessment data is available for {state} in our database."
+            }
         
-        # Generate analysis using RAG
+        # Calculate summary statistics
+        summary = {
+            'districts_covered': state_data['DISTRICT'].nunique() if 'DISTRICT' in state_data.columns else 0,
+            'years_covered': sorted(state_data['Assessment_Year'].unique().tolist()) if 'Assessment_Year' in state_data.columns else [],
+            'total_assessment_units': len(state_data)
+        }
+        
+        # Get key groundwater metrics
+        key_metrics = {}
+        numerical_columns = [
+            'Annual Ground water Recharge (ham) - Total - Total',
+            'Annual Extractable Ground water Resource (ham) - Total - Total',
+            'Ground Water Extraction for all uses (ha.m) - Total - Total',
+            'Stage of Ground Water Extraction (%) - Total - Total',
+            'Net Annual Ground Water Availability for Future Use (ham) - Total - Total',
+            'Total Ground Water Availability in the area (ham) - Other Parameters Present - Fresh',
+            'Total Ground Water Availability in the area (ham) - Other Parameters Present - Saline'
+        ]
+        
+        for col in numerical_columns:
+            if col in state_data.columns:
+                numeric_values = pd.to_numeric(state_data[col], errors='coerce').dropna()
+                if not numeric_values.empty:
+                    key_metrics[col] = {
+                        'mean': float(numeric_values.mean()),
+                        'min': float(numeric_values.min()),
+                        'max': float(numeric_values.max()),
+                        'count': len(numeric_values)
+                    }
+        
+        # Generate comprehensive analysis using RAG
         query = f"Provide detailed groundwater analysis for {state} state including water levels, recharge rates, extraction patterns, and recommendations"
         analysis = answer_query(query, "en", "system")
         
-        # Get state visualization
-        state_plot = create_state_analysis_plots(_master_df, state)
+        # Get state visualization if available
+        try:
+            state_plot = create_state_analysis_plots(_master_df, state)
+            visualization = state_plot.to_json() if state_plot else None
+        except Exception as e:
+            print(f"Error creating visualization: {e}")
+            visualization = None
         
         return {
-            "success": True,
             "state": state,
-            "coordinates": {"lat": lat, "lng": lng},
-            "analysis": analysis,
             "data_points": len(state_data),
-            "visualization": state_plot.to_json() if state_plot else None,
-            "summary": {
-                "total_assessment_units": len(state_data),
-                "years_covered": sorted(state_data['YEAR'].unique().tolist()) if 'YEAR' in state_data.columns else [],
-                "districts_covered": len(state_data['DISTRICT'].unique()) if 'DISTRICT' in state_data.columns else 0
-            }
+            "summary": summary,
+            "analysis": analysis,
+            "visualization": visualization,
+            "key_metrics": key_metrics
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Error in analyze-location: {e}")
+        return {
+            "error": str(e),
+            "state": None,
+            "analysis": f"An error occurred while analyzing the location: {str(e)}"
+        }
 
 def get_state_from_coordinates(lat: float, lng: float) -> str:
-    """Convert coordinates to state name using a simple mapping."""
-    # India state boundaries (simplified) - ordered by priority for overlapping regions
+    """Convert coordinates to state name using Gemini API with fallback to boundary mapping."""
+    # Try Gemini first if available
+    if _gemini_model:
+        try:
+            prompt = f"""
+            Given the coordinates latitude: {lat}, longitude: {lng}, determine which Indian state this location belongs to.
+            
+            Return ONLY the state name in English, nothing else. If the coordinates are outside India, return "Outside India".
+            
+            Common Indian states include: Andhra Pradesh, Arunachal Pradesh, Assam, Bihar, Chhattisgarh, Goa, Gujarat, Haryana, Himachal Pradesh, Jharkhand, Karnataka, Kerala, Madhya Pradesh, Maharashtra, Manipur, Meghalaya, Mizoram, Nagaland, Odisha, Punjab, Rajasthan, Sikkim, Tamil Nadu, Telangana, Tripura, Uttar Pradesh, Uttarakhand, West Bengal, Delhi, Jammu and Kashmir, Ladakh, Andaman and Nicobar Islands, Chandigarh, Dadra and Nagar Haveli and Daman and Diu, Lakshadweep, Puducherry.
+            
+            State name:
+            """
+            
+            response = _gemini_model.generate_content(prompt)
+            state_name = response.text.strip()
+            
+            # Clean up the response
+            if "Outside India" in state_name or "outside" in state_name.lower():
+                return None
+            
+            # Remove any extra text and return just the state name
+            lines = state_name.split('\n')
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('State') and not line.startswith('The'):
+                    print(f"Gemini found state: {line} for coordinates ({lat}, {lng})")
+                    return line
+            
+            return state_name
+        except Exception as e:
+            print(f"Error using Gemini for state detection: {e}")
+    
+    # Fallback to boundary mapping
     state_boundaries = {
         # Major states first to avoid conflicts
         "Maharashtra": {"min_lat": 15.6, "max_lat": 22.0, "min_lng": 72.6, "max_lng": 80.9},

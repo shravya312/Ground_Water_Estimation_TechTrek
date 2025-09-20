@@ -9,6 +9,11 @@ export default defineConfig({
                 target: 'http://localhost:8000',
                 changeOrigin: true,
                 secure: false,
+            },
+            '/analyze-location': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+                secure: false,
             }
         }
     }
