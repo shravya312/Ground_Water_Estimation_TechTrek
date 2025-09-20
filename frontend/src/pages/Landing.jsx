@@ -80,6 +80,29 @@ function Landing() {
             <p className="landing-sub">Ask questions, analyze datasets, and get guidance for groundwater estimation.</p>
             <div className="hero-ctas">
               <button onClick={handleGoogleSignIn} className="btn-primary">Sign in with Google</button>
+              <Link to="/demo" className="btn-secondary" style={{
+                marginLeft: '1rem',
+                padding: '0.75rem 1.5rem',
+                background: 'var(--color-surface)',
+                color: 'var(--color-text-primary)',
+                border: '2px solid var(--color-primary)',
+                borderRadius: '8px',
+                textDecoration: 'none',
+                fontWeight: '600',
+                transition: 'all 0.2s ease',
+                display: 'inline-block'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.background = 'var(--color-primary)'
+                e.target.style.color = 'white'
+              }}
+              onMouseOut={(e) => {
+                e.target.style.background = 'var(--color-surface)'
+                e.target.style.color = 'var(--color-text-primary)'
+              }}
+              >
+                🎯 Try Demo
+              </Link>
             </div>
             <div className="hero-stats">
               <div className="stat" style={{

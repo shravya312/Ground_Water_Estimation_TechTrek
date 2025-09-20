@@ -1,7 +1,23 @@
+import ingresService from './ingresService'
+
 const API_BASE_URL = import.meta.env?.VITE_API_URL || '';
 
 export const analyzeLocation = async (lat, lng) => {
     try {
+        // Try INGRES API first for enhanced analysis
+        try {
+            const ingresResponse = await ingresService.analyzeLocation(lat, lng, {
+                include_visualizations: true
+            })
+            
+            if (ingresResponse && (ingresResponse.criticality_status || ingresResponse.visualizations)) {
+                return ingresResponse
+            }
+        } catch (ingresError) {
+            console.warn('INGRES location analysis failed, falling back to basic analysis:', ingresError)
+        }
+        
+        // Fallback to basic location analysis
         const response = await fetch(`${API_BASE_URL}/analyze-location`, {
             method: 'POST',
             headers: {

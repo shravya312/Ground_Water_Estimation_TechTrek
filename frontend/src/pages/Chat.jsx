@@ -4,10 +4,11 @@ import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth, db } from '../firebase'
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 import { saveChatMessage, getUserChatHistory, clearChatHistory } from '../services/chatHistoryService'
-import MarkdownRenderer from '../components/MarkdownRenderer'
+import EnhancedMarkdownRenderer from '../components/EnhancedMarkdownRenderer'
 import LanguageSelector from '../components/LanguageSelector'
 import VisualizationPanel from '../components/VisualizationPanel'
 import LocationMap from '../components/LocationMap'
+import VisualizationModal from '../components/VisualizationModal'
 
 function Chat() {
   const [messages, setMessages] = useState([
@@ -25,6 +26,9 @@ function Chat() {
   const [showLocationMap, setShowLocationMap] = useState(false)
   const [userLocation, setUserLocation] = useState(null)
   const [isGettingLocation, setIsGettingLocation] = useState(false)
+  const [showVisualizationModal, setShowVisualizationModal] = useState(false)
+  const [selectedVisualization, setSelectedVisualization] = useState(null)
+  const [analysisData, setAnalysisData] = useState(null)
   const bottomRef = useRef(null)
 
   const handleLocationChange = (location, analysisResult = null) => {
@@ -37,12 +41,14 @@ function Chat() {
       
       let locationMsg
       if (analysisResult && !analysisResult.error) {
-        // If we have analysis results, show them
+        // If we have analysis results, show them with enhanced structure
         locationMsg = {
           id: Date.now(),
           role: 'assistant',
-          text: `📍 **Groundwater Analysis for ${analysisResult.state}**\n\n**Location:** ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}\n**Data Points:** ${analysisResult.data_points}\n**Districts Covered:** ${analysisResult.summary?.districts_covered || 0}\n**Years:** ${analysisResult.summary?.years_covered?.join(', ') || 'N/A'}\n\n**Analysis:**\n${analysisResult.analysis}\n\nYou can ask me more specific questions about groundwater conditions in ${analysisResult.state}!`
+          text: `📍 **Groundwater Analysis for ${analysisResult.state}**\n\n**Location:** ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}\n**Data Points:** ${analysisResult.data_points}\n**Districts Covered:** ${analysisResult.summary?.districts_covered || 0}\n**Years:** ${analysisResult.summary?.years_covered?.join(', ') || 'N/A'}\n\n**Analysis:**\n${analysisResult.analysis}\n\nYou can ask me more specific questions about groundwater conditions in ${analysisResult.state}!`,
+          analysisData: analysisResult
         }
+        setAnalysisData(analysisResult)
       } else {
         // Default location message
         locationMsg = {
@@ -53,6 +59,11 @@ function Chat() {
       }
       setMessages(prev => [...prev, locationMsg])
     }, 2000)
+  }
+
+  const handleVisualizationClick = (visualization) => {
+    setSelectedVisualization(visualization)
+    setShowVisualizationModal(true)
   }
 
   async function handleSend(e) {
@@ -93,7 +104,53 @@ function Chat() {
     try {
       setSending(true)
       const apiBase = import.meta.env?.VITE_API_URL || ''
-      const res = await fetch(`${apiBase}/ask-formatted`, {
+      
+      // Try INGRES API first for structured responses
+      let res, data
+      try {
+        res = await fetch(`${apiBase}/ingres/query`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            query: trimmed,
+            language: selectedLanguage,
+            include_visualizations: true
+          })
+        })
+        
+        if (res.ok) {
+          data = await res.json()
+          
+          // Check if this is a structured INGRES response
+          if (data.criticality_status || data.visualizations) {
+            const assistantMsg = { 
+              id: Date.now() + 1, 
+              role: 'assistant', 
+              text: `# 💧 Groundwater Analysis Report\n\n**Query:** ${trimmed}\n\n## Analysis\n${data.data?.analysis || 'Comprehensive groundwater analysis completed.'}`,
+              analysisData: data,
+              conversationId: conversationId
+            }
+            setMessages(prev => [...prev, assistantMsg])
+            setAnalysisData(data)
+            
+            // Save assistant message to Firebase
+            if (auth.currentUser) {
+              try {
+                const messageId = await saveChatMessage(auth.currentUser.uid, assistantMsg)
+                console.log('Assistant message saved successfully:', messageId)
+              } catch (error) {
+                console.error('Error saving assistant message:', error)
+              }
+            }
+            return
+          }
+        }
+      } catch (ingresError) {
+        console.warn('INGRES API failed, falling back to regular API:', ingresError)
+      }
+      
+      // Fallback to regular API
+      res = await fetch(`${apiBase}/ask-formatted`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -101,7 +158,7 @@ function Chat() {
           language: selectedLanguage
         })
       })
-      let data
+      
       try {
         data = await res.json()
       } catch (e) {
@@ -515,7 +572,11 @@ function Chat() {
                   marginBottom: '1rem'
                 }}>
                   {m.role === 'assistant' ? (
-                    <MarkdownRenderer content={m.text} />
+                    <EnhancedMarkdownRenderer 
+                      content={m.text} 
+                      analysisData={m.analysisData || analysisData}
+                      onVisualizationClick={handleVisualizationClick}
+                    />
                   ) : (
                     m.text
                   )}
@@ -586,6 +647,13 @@ function Chat() {
       <VisualizationPanel 
         isOpen={showVisualizationPanel}
         onClose={() => setShowVisualizationPanel(false)}
+      />
+      
+      {/* Visualization Modal */}
+      <VisualizationModal
+        isOpen={showVisualizationModal}
+        onClose={() => setShowVisualizationModal(false)}
+        visualizationData={selectedVisualization}
       />
       
       {/* Location Map Modal */}

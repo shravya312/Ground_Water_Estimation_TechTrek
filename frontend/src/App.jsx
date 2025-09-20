@@ -8,6 +8,7 @@ import Resources from './pages/Resources'
 import Chat from './pages/Chat'
 import AtHome from './pages/AtHome'
 import InYourCommunity from './pages/InYourCommunity'
+import GroundwaterDemo from './components/GroundwaterDemo'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -22,6 +23,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/chat" element={user ? <Chat /> : <Navigate to="/" replace />} />
+        <Route path="/demo" element={<GroundwaterDemo />} />
         <Route path="/groundwater" element={<Groundwater />} />
         <Route path="/resources" element={<Resources />} />
         <Route path="/at-home" element={<AtHome />} />
