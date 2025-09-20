@@ -2571,6 +2571,146 @@ def generate_key_findings_trends(record) -> Dict[str, Any]:
             "timestamp": pd.Timestamp.now().isoformat()
         }
 
+def generate_comprehensive_groundwater_summary(record) -> Dict[str, Any]:
+    """
+    Generate a comprehensive groundwater summary with clear key findings.
+    Includes basis of availability, major uses, and safety category.
+    """
+    try:
+        # Extract key data points
+        state = record.get('STATE', 'Unknown')
+        district = record.get('DISTRICT', 'Unknown')
+        assessment_year = record.get('Assessment_Year', 'Unknown')
+        
+        # Groundwater availability basis
+        annual_recharge = record.get('Annual Ground water Recharge (ham) - Total - Total', 0)
+        rainfall = record.get('Rainfall (mm) - Total - Total', 0)
+        rainfall_recharge = record.get('Rainfall Recharge (ham) - Total - Total', 0)
+        surface_irrigation_recharge = record.get('Recharge from Surface Irrigation (ham) - Total - Total', 0)
+        other_recharge = record.get('Recharge from Other Sources (ham) - Total - Total', 0)
+        
+        # Groundwater extraction uses
+        extraction_total = record.get('Ground Water Extraction for all uses (ha.m) - Total - Total', 0)
+        extraction_cultivation = record.get('Ground Water Extraction for all uses (ha.m) - Total - C', 0)
+        extraction_non_cultivation = record.get('Ground Water Extraction for all uses (ha.m) - Total - NC', 0)
+        extraction_domestic = record.get('Ground Water Extraction for all uses (ha.m) - Total - Domestic', 0)
+        extraction_industrial = record.get('Ground Water Extraction for all uses (ha.m) - Total - Industrial', 0)
+        
+        # Safety category calculation
+        extraction_stage = record.get('Stage of Ground Water Extraction (%) - Total - Total', 0)
+        future_availability = record.get('Net Annual Ground Water Availability for Future Use (ham) - Total - Total', 0)
+        
+        # Calculate safety category
+        if extraction_stage < 70:
+            safety_category = "Safe"
+            safety_emoji = "🟢"
+            safety_description = "Groundwater resources are within sustainable limits"
+        elif extraction_stage < 90:
+            safety_category = "Semi-Critical"
+            safety_emoji = "🟡"
+            safety_description = "Groundwater resources are approaching critical levels"
+        elif extraction_stage < 100:
+            safety_category = "Critical"
+            safety_emoji = "🔴"
+            safety_description = "Groundwater resources are critically stressed"
+        else:
+            safety_category = "Over-Exploited"
+            safety_emoji = "⚫"
+            safety_description = "Groundwater extraction exceeds recharge capacity"
+        
+        # Calculate recharge source percentages
+        total_recharge_sources = rainfall_recharge + surface_irrigation_recharge + other_recharge
+        rainfall_percentage = (rainfall_recharge / total_recharge_sources * 100) if total_recharge_sources > 0 else 0
+        irrigation_percentage = (surface_irrigation_recharge / total_recharge_sources * 100) if total_recharge_sources > 0 else 0
+        other_percentage = (other_recharge / total_recharge_sources * 100) if total_recharge_sources > 0 else 0
+        
+        # Calculate extraction use percentages
+        total_extraction_uses = extraction_cultivation + extraction_non_cultivation + extraction_domestic + extraction_industrial
+        cultivation_percentage = (extraction_cultivation / total_extraction_uses * 100) if total_extraction_uses > 0 else 0
+        non_cultivation_percentage = (extraction_non_cultivation / total_extraction_uses * 100) if total_extraction_uses > 0 else 0
+        domestic_percentage = (extraction_domestic / total_extraction_uses * 100) if total_extraction_uses > 0 else 0
+        industrial_percentage = (extraction_industrial / total_extraction_uses * 100) if total_extraction_uses > 0 else 0
+        
+        # Generate key findings as a clear, structured list
+        key_findings = [
+            f"🌧️ RAINFALL DEPENDENCY: The region receives {rainfall:.1f} mm of annual rainfall, contributing {rainfall_percentage:.1f}% of total groundwater recharge",
+            f"💧 RECHARGE SOURCES: Total annual recharge of {annual_recharge:.1f} ham comes from rainfall ({rainfall_percentage:.1f}%), surface irrigation ({irrigation_percentage:.1f}%), and other sources ({other_percentage:.1f}%)",
+            f"🌾 AGRICULTURAL DOMINANCE: Agricultural cultivation accounts for {cultivation_percentage:.1f}% of total groundwater extraction ({extraction_cultivation:.1f} ha.m)",
+            f"🏭 EXTRACTION BREAKDOWN: Total extraction of {extraction_total:.1f} ha.m includes cultivation ({cultivation_percentage:.1f}%), non-cultivation ({non_cultivation_percentage:.1f}%), domestic ({domestic_percentage:.1f}%), and industrial ({industrial_percentage:.1f}%) uses",
+            f"⚠️ SAFETY STATUS: {safety_category} {safety_emoji} - {safety_description}",
+            f"📊 EXTRACTION LEVEL: {extraction_stage:.1f}% of available resources extracted, with {future_availability:.1f} ham remaining for future use",
+            f"🔄 SUSTAINABILITY: {'Sustainable' if extraction_stage < 70 else 'At Risk' if extraction_stage < 100 else 'Critical'} status based on extraction vs recharge balance"
+        ]
+        
+        # Generate comprehensive summary
+        summary = {
+            "location": f"{district}, {state}",
+            "assessment_year": assessment_year,
+            "key_findings": key_findings,
+            "groundwater_availability_basis": {
+                "primary_sources": [
+                    f"• Rainfall: {rainfall:.1f} mm annually ({rainfall_percentage:.1f}% of recharge)",
+                    f"• Surface Irrigation: {surface_irrigation_recharge:.1f} ham ({irrigation_percentage:.1f}% of recharge)",
+                    f"• Other Sources: {other_recharge:.1f} ham ({other_percentage:.1f}% of recharge)"
+                ],
+                "total_annual_recharge": f"{annual_recharge:.1f} ham",
+                "rainfall_dependency": "High" if rainfall_percentage > 60 else "Moderate" if rainfall_percentage > 30 else "Low"
+            },
+            "major_extraction_uses": {
+                "cultivation": {
+                    "volume": f"{extraction_cultivation:.1f} ha.m",
+                    "percentage": f"{cultivation_percentage:.1f}%",
+                    "description": "Agricultural irrigation and crop production"
+                },
+                "non_cultivation": {
+                    "volume": f"{extraction_non_cultivation:.1f} ha.m", 
+                    "percentage": f"{non_cultivation_percentage:.1f}%",
+                    "description": "Non-agricultural activities and land use"
+                },
+                "domestic": {
+                    "volume": f"{extraction_domestic:.1f} ha.m",
+                    "percentage": f"{domestic_percentage:.1f}%", 
+                    "description": "Household and municipal water supply"
+                },
+                "industrial": {
+                    "volume": f"{extraction_industrial:.1f} ha.m",
+                    "percentage": f"{industrial_percentage:.1f}%",
+                    "description": "Industrial processes and manufacturing"
+                },
+                "total_extraction": f"{extraction_total:.1f} ha.m"
+            },
+            "groundwater_safety_category": {
+                "category": safety_category,
+                "emoji": safety_emoji,
+                "description": safety_description,
+                "extraction_stage": f"{extraction_stage:.1f}%",
+                "future_availability": f"{future_availability:.1f} ham",
+                "sustainability_status": "Sustainable" if extraction_stage < 70 else "At Risk" if extraction_stage < 100 else "Critical"
+            },
+            "summary_bullets": [
+                f"📍 Location: {district}, {state} (Assessment Year: {assessment_year})",
+                f"💧 Groundwater Availability: Primarily dependent on rainfall ({rainfall:.1f} mm) contributing {rainfall_percentage:.1f}% of total recharge",
+                f"🌾 Major Use: Agricultural cultivation accounts for {cultivation_percentage:.1f}% of total groundwater extraction",
+                f"⚠️ Safety Status: {safety_category} {safety_emoji} - {safety_description}",
+                f"📊 Extraction Level: {extraction_stage:.1f}% of available resources, with {future_availability:.1f} ham remaining for future use"
+            ],
+            "detailed_analysis": {
+                "recharge_analysis": f"Total annual recharge of {annual_recharge:.1f} ham comes primarily from rainfall ({rainfall_percentage:.1f}%), with additional contributions from surface irrigation ({irrigation_percentage:.1f}%) and other sources ({other_percentage:.1f}%)",
+                "extraction_analysis": f"Total groundwater extraction of {extraction_total:.1f} ha.m is dominated by agricultural use ({cultivation_percentage:.1f}%), followed by non-cultivation activities ({non_cultivation_percentage:.1f}%), domestic use ({domestic_percentage:.1f}%), and industrial use ({industrial_percentage:.1f}%)",
+                "sustainability_analysis": f"The area is classified as {safety_category} with {extraction_stage:.1f}% extraction rate, indicating {safety_description.lower()}. Future availability stands at {future_availability:.1f} ham"
+            }
+        }
+        
+        return summary
+        
+    except Exception as e:
+        print(f"Error generating comprehensive groundwater summary: {e}")
+        return {
+            "error": f"Error generating summary: {str(e)}",
+            "location": "Unknown",
+            "key_findings": "Analysis unavailable"
+        }
+
 def generate_additional_resources_analysis(record) -> Dict[str, Any]:
     """
     Generate comprehensive additional resources analysis using Gemini.
@@ -3446,6 +3586,76 @@ async def get_criticality_summary():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating criticality summary: {str(e)}")
+
+@app.get("/ingres/groundwater-summary/{state}/{district}")
+async def get_groundwater_summary(state: str, district: str):
+    """
+    Get comprehensive groundwater summary with key findings for a specific district.
+    Includes basis of availability, major uses, and safety category.
+    """
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Filter data for the specific state and district
+        filtered_df = _master_df[
+            (_master_df['STATE'].str.contains(state, case=False, na=False)) &
+            (_master_df['DISTRICT'].str.contains(district, case=False, na=False))
+        ]
+        
+        if filtered_df.empty:
+            raise HTTPException(status_code=404, detail=f"No data found for {district}, {state}")
+        
+        # Get the most recent record for the district
+        latest_record = filtered_df.sort_values('Assessment_Year', ascending=False).iloc[0]
+        
+        # Generate comprehensive summary
+        summary = generate_comprehensive_groundwater_summary(latest_record)
+        
+        return {
+            "success": True,
+            "summary": summary,
+            "data_source": "master_groundwater_data.csv",
+            "generated_at": pd.Timestamp.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating groundwater summary: {str(e)}")
+
+@app.get("/ingres/groundwater-summary-by-coordinates")
+async def get_groundwater_summary_by_coordinates(lat: float, lon: float):
+    """
+    Get comprehensive groundwater summary for coordinates.
+    """
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Find the closest district based on coordinates
+        # This is a simplified approach - in practice, you'd use proper geospatial matching
+        # For now, we'll return a sample from the first available record
+        if _master_df.empty:
+            raise HTTPException(status_code=404, detail="No data available")
+        
+        sample_record = _master_df.iloc[0]
+        summary = generate_comprehensive_groundwater_summary(sample_record)
+        
+        return {
+            "success": True,
+            "summary": summary,
+            "coordinates": {"latitude": lat, "longitude": lon},
+            "note": "Sample data - implement proper geospatial matching for accurate results",
+            "generated_at": pd.Timestamp.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating groundwater summary: {str(e)}")
 
 @app.get("/health")
 async def health_check():
