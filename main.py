@@ -2642,6 +2642,14 @@ def generate_comprehensive_groundwater_summary(record) -> Dict[str, Any]:
             f"🔄 SUSTAINABILITY: {'Sustainable' if extraction_stage < 70 else 'At Risk' if extraction_stage < 100 else 'Critical'} status based on extraction vs recharge balance"
         ]
         
+        # Add Karnataka comprehensive averages if this is Karnataka data
+        if state.lower() in ['karnataka', 'karnataka state']:
+            key_findings.extend([
+                f"📊 KARNATAKA AVERAGES: Based on Davanagere & Mysuru districts - 61,021.61 ham annual recharge, 85.01% extraction stage",
+                f"🌍 GEOGRAPHICAL COVERAGE: 449,970.60 ha recharge-worthy area with 746.09 mm average rainfall",
+                f"⚠️ DATA LIMITATIONS: Analysis limited to 2 districts, not representative of entire Karnataka state"
+            ])
+        
         # Generate comprehensive summary
         summary = {
             "location": f"{district}, {state}",
@@ -2700,6 +2708,34 @@ def generate_comprehensive_groundwater_summary(record) -> Dict[str, Any]:
                 "sustainability_analysis": f"The area is classified as {safety_category} with {extraction_stage:.1f}% extraction rate, indicating {safety_description.lower()}. Future availability stands at {future_availability:.1f} ham"
             }
         }
+        
+        # Add Karnataka comprehensive averages if this is Karnataka data
+        if state.lower() in ['karnataka', 'karnataka state']:
+            summary["karnataka_comprehensive_averages"] = {
+                "description": "Averages across Davanagere & Mysuru districts - Data limitations prevent precise analysis",
+                "data": {
+                    "Annual Ground water Recharge (ham) - Total - Total": "61,021.61 ham",
+                    "Annual Extractable Ground water Resource (ham) - Total - Total": "55,073.39 ham",
+                    "Ground Water Extraction for all uses (ha.m) - Total - Total": "46,804.31 ha.m",
+                    "Stage of Ground Water Extraction (%) - Total - Total": "85.01%",
+                    "Net Annual Ground Water Availability for Future Use (ham) - Total - Total": "18,344.97 ham",
+                    "Environmental Flows (ham) - Total - Total": "5,948.21 ham",
+                    "Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (ham) - Total - Total": "3,908.70 ham",
+                    "Average Rainfall (mm) - Total": "746.09 mm",
+                    "Total Geographical Area (ha) - Recharge Worthy Area (ha) - C": "163,299.60 ha",
+                    "Total Geographical Area (ha) - Recharge Worthy Area (ha) - NC": "286,671.00 ha",
+                    "Total Geographical Area (ha) - Recharge Worthy Area (ha) - PQ": "0.00 ha",
+                    "Total Geographical Area (ha) - Recharge Worthy Area (ha) - Total": "449,970.60 ha",
+                    "Total Geographical Area (ha) - Hilly Area - Total": "34,611.80 ha",
+                    "Total Geographical Area (ha) - Total - Total": "484,582.40 ha"
+                },
+                "limitations": [
+                    "Only 2 districts analyzed (Davanagere & Mysuru)",
+                    "Not representative of entire Karnataka state",
+                    "Data inconsistencies and missing parameters",
+                    "Heavy influence of data availability on averages"
+                ]
+            }
         
         return summary
         

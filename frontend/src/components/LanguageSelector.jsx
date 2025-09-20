@@ -6,8 +6,37 @@ const LanguageSelector = ({ selectedLanguage, onLanguageChange, className = '' }
 
   useEffect(() => {
     const fetchLanguages = async () => {
+      // Set a timeout to prevent indefinite loading
+      const timeoutId = setTimeout(() => {
+        setLanguages({
+          'en': 'English',
+          'hi': 'Hindi',
+          'bn': 'Bengali',
+          'ta': 'Tamil',
+          'te': 'Telugu',
+          'ml': 'Malayalam',
+          'gu': 'Gujarati',
+          'mr': 'Marathi',
+          'pa': 'Punjabi',
+          'kn': 'Kannada',
+          'or': 'Odia',
+          'as': 'Assamese',
+          'ur': 'Urdu',
+          'ne': 'Nepali',
+          'si': 'Sinhala'
+        })
+        setLoading(false)
+      }, 3000) // 3 second timeout
+
       try {
-        const response = await fetch('http://localhost:8000/languages')
+        const controller = new AbortController()
+        const response = await fetch('http://localhost:8000/languages', {
+          signal: controller.signal,
+          timeout: 2000
+        })
+        
+        clearTimeout(timeoutId)
+        
         if (response.ok) {
           const data = await response.json()
           setLanguages(data.languages)
@@ -32,6 +61,7 @@ const LanguageSelector = ({ selectedLanguage, onLanguageChange, className = '' }
           })
         }
       } catch (error) {
+        clearTimeout(timeoutId)
         console.error('Failed to fetch languages:', error)
         // Fallback languages
         setLanguages({
