@@ -9,7 +9,6 @@ import LanguageSelector from '../components/LanguageSelector'
 import VisualizationPanel from '../components/VisualizationPanel'
 import LocationMap from '../components/LocationMap'
 import VisualizationModal from '../components/VisualizationModal'
-import voiceService from '../services/voiceService'
 
 function Chat() {
   const [messages, setMessages] = useState([
@@ -30,9 +29,6 @@ function Chat() {
   const [showVisualizationModal, setShowVisualizationModal] = useState(false)
   const [selectedVisualization, setSelectedVisualization] = useState(null)
   const [analysisData, setAnalysisData] = useState(null)
-  const [recording, setRecording] = useState(false)
-  const [liveTranscript, setLiveTranscript] = useState('')
-  const recognitionRef = useRef(null)
   const bottomRef = useRef(null)
 
   const handleLocationChange = (location, analysisResult = null) => {
@@ -72,23 +68,7 @@ function Chat() {
 
   async function handleSend(e) {
     e.preventDefault()
-    
-    // If voice recording is active, stop it first
-    if (recording) {
-      setRecording(false)
-      if (recognitionRef.current) {
-        recognitionRef.current.stop()
-        recognitionRef.current = null
-      }
-      // Use live transcript if available, otherwise use input
-      const textToSend = liveTranscript.trim() || input.trim()
-      if (textToSend) {
-        setInput(textToSend)
-        setLiveTranscript('')
-      }
-    }
-    
-    const trimmed = (liveTranscript.trim() || input.trim())
+    const trimmed = input.trim()
     if (!trimmed) return
     
     // Generate conversation ID if starting new conversation
@@ -106,7 +86,6 @@ function Chat() {
     setMessages(prev => [...prev, userMsg])
     setHistory(prev => [trimmed, ...prev.slice(0, 19)])
     setInput('')
-    setLiveTranscript('')
     
     // Save user message to Firebase
     if (auth.currentUser) {
@@ -620,97 +599,16 @@ function Chat() {
             boxShadow: 'var(--shadow-lg)',
             borderRadius: 24
           }}>
-            <button
-              type="button"
-              onClick={() => {
-                if (!recording) {
-                  // Start recording
-                  setRecording(true)
-                  setLiveTranscript('')
-                  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-                  if (SpeechRecognition) {
-                    const recognition = new SpeechRecognition()
-                    recognition.continuous = true
-                    recognition.interimResults = true
-                    recognition.lang = selectedLanguage || 'en'
-                    recognition.onresult = (event) => {
-                      let interim = ''
-                      let final = ''
-                      for (let i = 0; i < event.results.length; ++i) {
-                        if (event.results[i].isFinal) {
-                          final += event.results[i][0].transcript
-                        } else {
-                          interim += event.results[i][0].transcript
-                        }
-                      }
-                      setLiveTranscript(final + interim)
-                    }
-                    recognition.onend = () => {
-                      setRecording(false)
-                      recognitionRef.current = null
-                    }
-                    recognition.onerror = (e) => {
-                      setRecording(false)
-                      setLiveTranscript('')
-                      recognitionRef.current = null
-                    }
-                    recognitionRef.current = recognition
-                    recognition.start()
-                  }
-                } else {
-                  // Stop recording
-                  setRecording(false)
-                  if (recognitionRef.current) {
-                    recognitionRef.current.stop()
-                    recognitionRef.current = null
-                  }
-                  // Put transcript in input box, don't send automatically
-                  if (liveTranscript.trim()) {
-                    setInput(liveTranscript.trim())
-                    setLiveTranscript('')
-                  }
-                }
-              }}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                border: recording ? '1px solid rgba(220,38,38,0.6)' : '1px solid var(--color-border)',
-                background: recording ? 'rgba(220,38,38,0.1)' : 'var(--color-surface-elevated)',
-                color: 'var(--color-text-primary)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '1.1rem',
-                boxShadow: recording ? '0 0 0 0 rgba(220,38,38,0.6)' : 'none',
-                animation: recording ? 'pulse-glow 1.5s ease-out infinite' : 'none'
-              }}
-              title={recording ? 'Stop voice input' : 'Start voice input'}
-            >
-              {recording ? '🛑' : '🎤'}
-            </button>
-            <style>{`
-              @keyframes pulse-glow {
-                0% { box-shadow: 0 0 0 0 rgba(220,38,38,0.6); }
-                70% { box-shadow: 0 0 0 10px rgba(220,38,38,0); }
-                100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); }
-              }
-            `}</style>
             <input
-              value={recording ? liveTranscript : input}
-              onChange={e => {
-                if (!recording) {
-                  setInput(e.target.value)
-                }
-              }}
-              placeholder={recording ? "Listening... speak now" : "Ask about groundwater data..."}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              placeholder="Ask about groundwater data..."
               style={{
                 flex: 1,
-                border: recording ? '2px solid rgba(34, 197, 94, 0.6)' : '1px solid var(--color-border)',
+                border: '1px solid var(--color-border)',
                 padding: '1rem 1.25rem',
                 borderRadius: 16,
-                background: recording ? 'rgba(34, 197, 94, 0.05)' : 'var(--color-surface-elevated)',
+                background: 'var(--color-surface-elevated)',
                 fontSize: '1rem',
                 color: 'var(--color-text-primary)',
                 outline: 'none',
@@ -718,20 +616,15 @@ function Chat() {
                 fontWeight: '500'
               }}
               onFocus={(e) => {
-                if (!recording) {
-                  e.target.style.borderColor = 'var(--color-primary)';
-                  e.target.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.2)';
-                  e.target.style.background = 'var(--color-surface)';
-                }
+                e.target.style.borderColor = 'var(--color-primary)';
+                e.target.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.2)';
+                e.target.style.background = 'var(--color-surface)';
               }}
               onBlur={(e) => {
-                if (!recording) {
-                  e.target.style.borderColor = 'var(--color-border)';
-                  e.target.style.boxShadow = 'none';
-                  e.target.style.background = 'var(--color-surface-elevated)';
-                }
+                e.target.style.borderColor = 'var(--color-border)';
+                e.target.style.boxShadow = 'none';
+                e.target.style.background = 'var(--color-surface-elevated)';
               }}
-              readOnly={recording}
             />
             <button 
               type="submit" 
