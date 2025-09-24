@@ -18,8 +18,7 @@ import hashlib
 import uuid
 from typing import List, Dict, Optional, Any, Union
 from langdetect import detect_langs, LangDetectException
-from fastapi import FastAPI, HTTPException, Depends, status, UploadFile, File, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -103,7 +102,6 @@ _bm25_df = None
 _translator_model = None
 _translator_tokenizer = None
 _indic_processor = None
-_openai_client = None
 
 _LANG_CODE_MAP = {
     'hi': 'hin_Deva',
@@ -210,172 +208,6 @@ class LocationAnalysisResponse(BaseModel):
     additional_resources: Optional[Dict[str, Any]] = None
     key_findings_trends: Optional[Dict[str, Any]] = None
     enhanced_statistics: Optional[Dict[str, Any]] = None
-
-# ===== Multilingual Voice/TTS Pipeline (modular functions) =====
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
-try:
-    from gtts import gTTS
-except Exception:
-    gTTS = None
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-def _get_openai_client():
-    global _openai_client
-    if _openai_client:
-        return _openai_client
-    if not OpenAI:
-        raise RuntimeError("openai package not installed. Install 'openai>=1.0' and set OPENAI_API_KEY.")
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY not set in environment.")
-    _openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    return _openai_client
-
-def speech_to_text(audio_bytes: bytes) -> Dict[str, str]:
-    """Transcribe audio to text with auto language detection using OpenAI Whisper.
-
-    Returns {'text': str, 'language': str}
-    """
-    client = _get_openai_client()
-    import tempfile
-    # Save as .webm by default (MediaRecorder typical); Whisper supports multiple formats
-    with tempfile.NamedTemporaryFile(suffix=".webm", delete=True) as tmp:
-        tmp.write(audio_bytes)
-        tmp.flush()
-        try:
-            resp = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=open(tmp.name, "rb"),
-                response_format="json",
-                temperature=0,
-            )
-        except Exception as e:
-            raise RuntimeError(f"Whisper transcription failed: {e}")
-    text = getattr(resp, "text", None) or (resp.get("text") if isinstance(resp, dict) else None)
-    language = getattr(resp, "language", None) or (resp.get("language") if isinstance(resp, dict) else None)
-    return {"text": text or "", "language": language or "auto"}
-
-def translate_to_english(text: str, source_lang: Optional[str] = None) -> str:
-    """Translate arbitrary language to English using OpenAI GPT if available; fallback: return input."""
-    try:
-        client = _get_openai_client()
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Translate the user text to English. Return only the translation."},
-                {"role": "user", "content": f"Source language: {source_lang or 'auto'}\nText: {text}"},
-            ],
-            temperature=0,
-        )
-        return completion.choices[0].message.content.strip()
-    except Exception:
-        return text
-
-def chatbot_query(english_text: str) -> str:
-    return answer_query(english_text, user_language='en')
-
-def translate_from_english(answer_en: str, target_lang: Optional[str]) -> str:
-    if not target_lang or target_lang.lower().startswith('en'):
-        return answer_en
-    try:
-        client = _get_openai_client()
-        completion = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Translate the assistant's answer from English to the target language. Return only the translation."},
-                {"role": "user", "content": f"Target language: {target_lang}\nText: {answer_en}"},
-            ],
-            temperature=0,
-        )
-        return completion.choices[0].message.content.strip()
-    except Exception:
-        return answer_en
-
-def text_to_speech(answer_text: str, language: Optional[str]) -> Optional[bytes]:
-    if not gTTS:
-        return None
-
-# ===== Voice REST Endpoints =====
-
-@app.post("/voice/transcribe")
-async def voice_transcribe(audio: UploadFile = File(...)):
-    try:
-        audio_bytes = await audio.read()
-        result = speech_to_text(audio_bytes)
-        return result
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-@app.post("/voice/chat")
-async def voice_chat(request: Request, audio: UploadFile | None = File(None)):
-    """All-in-one voice chat.
-    Accepts either multipart form with 'audio' or JSON with {'text','language'}.
-    Returns: text_original, detected_language, text_english, answer_english, answer_translated, optional tts audio (base64).
-    """
-    import base64
-    try:
-        detected_language = None
-        text_original = None
-
-        if audio is not None:
-            audio_bytes = await audio.read()
-            stt = speech_to_text(audio_bytes)
-            text_original = stt.get("text") or ""
-            detected_language = stt.get("language") or None
-        else:
-            data = await request.json()
-            text_original = (data.get("text") or "").strip()
-            detected_language = data.get("language")
-            if not text_original:
-                raise HTTPException(status_code=400, detail="Missing 'audio' or 'text'")
-
-        text_english = translate_to_english(text_original, detected_language)
-        answer_en = chatbot_query(text_english)
-        target_lang = detected_language or 'en'
-        answer_translated = translate_from_english(answer_en, target_lang)
-        audio_mp3 = text_to_speech(answer_translated, target_lang)
-        audio_b64 = base64.b64encode(audio_mp3).decode("utf-8") if audio_mp3 else None
-
-        return {
-            "text_original": text_original,
-            "detected_language": detected_language or "auto",
-            "text_english": text_english,
-            "answer_english": answer_en,
-            "answer_translated": answer_translated,
-            "tts_audio_base64": audio_b64,
-            "tts_mime": "audio/mpeg" if audio_b64 else None
-        }
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-@app.post("/ask-formatted")
-async def ask_formatted(request: AskRequest):
-    try:
-        query = (request.query or '').strip()
-        if not query:
-            raise HTTPException(status_code=400, detail="Missing 'query'")
-        lang = request.language or 'en'
-        answer = answer_query(query, user_language=lang)
-        return {"answer": answer}
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-    lang_code = (language or 'en').split('-')[0]
-    try:
-        tts = gTTS(text=answer_text, lang=lang_code)
-        from io import BytesIO
-        buf = BytesIO()
-        tts.write_to_fp(buf)
-        buf.seek(0)
-        return buf.read()
-    except Exception:
-        return None
 
 def _fix_meta_tensors(model):
     """Fix meta tensors by converting them to real tensors."""
