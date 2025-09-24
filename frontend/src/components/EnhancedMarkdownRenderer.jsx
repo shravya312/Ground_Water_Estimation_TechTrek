@@ -69,6 +69,7 @@ const MarkdownRenderer = ({ content }) => {
           
           renderedElements.push(
             <div key={`table-${i}`} style={{ 
+              overflowX: 'auto',
               margin: '2rem 0',
               border: '1px solid var(--color-border)',
               borderRadius: '16px',
