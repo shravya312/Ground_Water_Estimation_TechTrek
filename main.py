@@ -52,7 +52,7 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COLLECTION_NAME = "groundwater_excel_collection"
 VECTOR_SIZE = 384
-MIN_SIMILARITY_SCORE = 0.5
+MIN_SIMILARITY_SCORE = 0.3
 
 # --- Language Support ---
 SUPPORTED_LANGUAGES = {
@@ -736,8 +736,9 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
                 limit=20,
                 with_payload=True
             )
-            dense_hits = {hit.payload.get("text", ""): hit.score for hit in qdrant_results}
-            dense_payloads = {hit.payload.get("text", ""): hit.payload for hit in qdrant_results}
+            # Filter dense results by similarity threshold
+            dense_hits = {hit.payload.get("text", ""): hit.score for hit in qdrant_results if hit.score >= MIN_SIMILARITY_SCORE}
+            dense_payloads = {hit.payload.get("text", ""): hit.payload for hit in qdrant_results if hit.score >= MIN_SIMILARITY_SCORE}
 
         # Sparse Retrieval (BM25)
         sparse_hits = {}
@@ -773,18 +774,20 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
         
         sorted_chunks_with_scores = sorted(combined_scores.items(), key=lambda item: item[1], reverse=True)
         
-        # Retrieve original payloads for the top re-ranked chunks
+        # Retrieve original payloads for the top re-ranked chunks with similarity threshold
         results_with_payloads = []
         for chunk_text, score in sorted_chunks_with_scores[:20]:
-            if chunk_text in dense_payloads:
-                payload = dense_payloads[chunk_text]
-            else:
-                matching_rows = _bm25_df[_bm25_df['combined_text'] == chunk_text]
-                if not matching_rows.empty:
-                    payload = matching_rows.iloc[0].to_dict()
+            # Apply similarity threshold filter
+            if score >= MIN_SIMILARITY_SCORE:
+                if chunk_text in dense_payloads:
+                    payload = dense_payloads[chunk_text]
                 else:
-                    payload = {"text": chunk_text}
-            results_with_payloads.append({"score": score, "data": payload})
+                    matching_rows = _bm25_df[_bm25_df['combined_text'] == chunk_text]
+                    if not matching_rows.empty:
+                        payload = matching_rows.iloc[0].to_dict()
+                    else:
+                        payload = {"text": chunk_text}
+                results_with_payloads.append({"score": score, "data": payload})
 
         return results_with_payloads
 
@@ -825,7 +828,9 @@ def re_rank_chunks(query_text, candidate_results, top_k=5):
 
     final_results = []
     for data, score in re_ranked_scores[:top_k]:
-        final_results.append({"score": score, "data": data})
+        # Apply similarity threshold filter in reranking
+        if score >= MIN_SIMILARITY_SCORE:
+            final_results.append({"score": score, "data": data})
     
     return final_results
 
@@ -985,11 +990,66 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
   | Parameter | Cultivated (C) (ham) | Non-Cultivated (NC) (ham) | Perennial (PQ) (ham) | Total (ham) |
   |-----------|---------------------|---------------------------|---------------------|-------------|
   | Rainfall Recharge | 15000.50 | 12000.25 | 0.0 | 27000.75 |
+
+MANDATORY SECTIONS TO INCLUDE IN EVERY REPORT:
+
+1. RAINFALL DATA (Detailed Breakdown):
+   - Rainfall in Cultivated (C), Non-Cultivated (NC), and Perennial (PQ) areas
+   - Total rainfall with units (mm)
+   - Year-wise rainfall patterns if multiple years available
+
+2. GROUNDWATER SOURCES (Complete Source Analysis):
+   - Rainfall Recharge (C, NC, PQ, Total)
+   - Canals (C, NC, PQ, Total)
+   - Surface Water Irrigation (C, NC, PQ, Total)
+   - Ground Water Irrigation (C, NC, PQ, Total)
+   - Tanks and Ponds (C, NC, PQ, Total)
+   - Water Conservation Structures (C, NC, PQ, Total)
+   - Pipelines (C, NC, PQ, Total)
+   - Sewages and Flash Flood Channels (C, NC, PQ, Total)
+   - Total Annual Groundwater Recharge (C, NC, PQ, Total)
+
+3. EXTRACTION PURPOSES (Detailed Use Analysis):
+   - Ground Water Extraction for Domestic Use (C, NC, PQ, Total)
+   - Ground Water Extraction for Industrial Use (C, NC, PQ, Total)
+   - Ground Water Extraction for Irrigation (C, NC, PQ, Total)
+   - Total Ground Water Extraction for all uses (C, NC, PQ, Total)
+
+4. FUTURE AVAILABILITY AND ALLOCATION:
+   - Net Annual Ground Water Availability for Future Use (C, NC, PQ, Total)
+   - Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (C, NC, PQ, Total)
+   - Future sustainability projections
+
+5. EXTRACTION STAGE ANALYSIS:
+   - Stage of Ground Water Extraction (%) (C, NC, PQ, Total)
+   - Sustainability indicators and over-extraction warnings
+
+6. GEOGRAPHICAL AREA BREAKDOWN:
+   - Total Geographical Area (C, NC, PQ, Total)
+   - Recharge Worthy Area (C, NC, PQ, Total)
+   - Hilly Area (Total)
+
+7. ENVIRONMENTAL AND QUALITY DATA:
+   - Environmental Flows (C, NC, PQ, Total)
+   - Quality Tagging parameters (if available)
+   - Additional Potential Resources (if available)
+
+IMPORTANT: STATE-LEVEL QUERIES WITHOUT SPECIFIC DISTRICTS:
+- If the query mentions only a state (e.g., "ground water estimation in karnataka") without specifying districts, automatically select and analyze ALL available districts from that state in the dataset.
+- Include data from multiple districts to provide a comprehensive state-level analysis.
+- Present district-wise breakdowns in tables and provide state-level averages/summaries.
+- Mention which districts are included in the analysis and note if any districts are missing from the dataset.
+- For state-level queries, organize the report with:
+  a) Individual district analysis (detailed breakdown for each district)
+  b) State-level comprehensive summary (averages and totals across all districts)
+  c) Comparative analysis between districts within the state
+
 - Highlight key findings and trends.
 - Do NOT ask follow-up questions about what aspect of estimation the user is interested in. Provide a comprehensive summary of ALL available relevant metrics.
 - If data is missing for certain columns, mention that explicitly.
 - Format the output like a professional groundwater assessment report with proper markdown tables.
 - NEVER use pipe characters (|) or hyphens (-) as text - only use them for markdown table formatting.
+- ALWAYS include the 7 mandatory sections above in every groundwater estimation report.
 """
         f"{conversation_history_str}"
         f"{extracted_params_str}"
