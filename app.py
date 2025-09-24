@@ -58,7 +58,7 @@ except Exception as e:
     st.stop()
 
 # --- Constants ---
-COLLECTION_NAME = "groundwater_excel_collection"
+COLLECTION_NAME = "groundwater_excel_collection1"
 VECTOR_SIZE = 384  # Based on all-MiniLM-L6-v2 model
 MIN_SIMILARITY_SCORE = 0.5  # Adjusted for potentially more diverse Excel data
 

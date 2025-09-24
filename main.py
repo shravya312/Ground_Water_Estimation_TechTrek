@@ -51,8 +51,8 @@ QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COLLECTION_NAME = "groundwater_excel_collection"
-VECTOR_SIZE = 384
-MIN_SIMILARITY_SCORE = 0.3
+VECTOR_SIZE = 768  # Upgraded to support better embedding models
+MIN_SIMILARITY_SCORE = 0.3  # Lowered threshold to find more relevant results
 
 # --- Language Support ---
 SUPPORTED_LANGUAGES = {
@@ -233,6 +233,9 @@ def initialize_sentence_transformer():
     """Robust initialization of SentenceTransformer with meta tensor handling."""
     global _model
     
+    # Initialize _model to None first
+    _model = None
+    
     try:
         os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -241,7 +244,7 @@ def initialize_sentence_transformer():
         torch.set_default_dtype(torch.float32)
         
         _model = SentenceTransformer(
-            "all-MiniLM-L6-v2",
+            "all-mpnet-base-v2",  # Upgraded to better model for higher similarity scores
             device="cpu",
             model_kwargs={
                 "low_cpu_mem_usage": False,
@@ -258,7 +261,7 @@ def initialize_sentence_transformer():
         try:
             _model = None
             _model = SentenceTransformer(
-                "all-MiniLM-L6-v2",
+                "all-mpnet-base-v2",  # Upgraded to better model
                 device="cpu",
                 model_kwargs={
                     "dtype": torch.float32,
@@ -274,7 +277,7 @@ def initialize_sentence_transformer():
             
             try:
                 _model = None
-                _model = SentenceTransformer("all-MiniLM-L6-v2")
+                _model = SentenceTransformer("all-mpnet-base-v2")  # Upgraded to better model
                 _model.eval()
                 return True
                 
@@ -367,20 +370,77 @@ def create_detailed_combined_text(row):
             parts.append(f"{col}: {value}")
     return " | ".join(parts)
 
+def preprocess_text_for_embedding(text):
+    """Enhanced text preprocessing for better semantic understanding."""
+    if not text or pd.isna(text):
+        return ""
+    
+    # Convert to string and clean
+    text = str(text).strip()
+    
+    # Remove extra whitespace and normalize
+    text = re.sub(r'\s+', ' ', text)
+    
+    # Preserve important structure markers
+    text = re.sub(r'([A-Z][a-z]+):', r'\1: ', text)  # Add space after colons
+    text = re.sub(r'(\d+\.?\d*)\s*(ham|ha|mm|%)', r'\1 \2', text)  # Preserve units
+    
+    # Enhanced preprocessing for better semantic matching
+    # Expand abbreviations and synonyms
+    text = re.sub(r'\bground\s*water\b', 'groundwater', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bwater\s*table\b', 'watertable', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bwater\s*level\b', 'waterlevel', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bwater\s*recharge\b', 'waterrecharge', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bwater\s*extraction\b', 'waterextraction', text, flags=re.IGNORECASE)
+    
+    # Normalize state names
+    state_mappings = {
+        'karnataka': 'karnataka state',
+        'maharashtra': 'maharashtra state', 
+        'tamil nadu': 'tamil nadu state',
+        'gujarat': 'gujarat state',
+        'rajasthan': 'rajasthan state',
+        'kerala': 'kerala state',
+        'andhra pradesh': 'andhra pradesh state'
+    }
+    
+    for state, expanded in state_mappings.items():
+        text = re.sub(rf'\b{re.escape(state)}\b', expanded, text, flags=re.IGNORECASE)
+    
+    return text.strip()
+
 def tokenize_text(text):
-    """Tokenize text for BM25 processing."""
-    return text.lower().split()
+    """Enhanced tokenization for BM25 processing."""
+    if not text:
+        return []
+    
+    # Preprocess text first
+    processed_text = preprocess_text_for_embedding(text)
+    
+    # Tokenize with better handling
+    tokens = processed_text.lower().split()
+    
+    # Remove very short tokens and numbers without context
+    tokens = [token for token in tokens if len(token) > 1 or token.isdigit()]
+    
+    return tokens
 
 def get_embeddings(texts):
-    """Convert text into embeddings"""
+    """Convert text into embeddings with enhanced preprocessing"""
+    global _model
     try:
         if _model is None:
-            return None
+            # Try to initialize the model
+            if not initialize_sentence_transformer():
+                return None
+        
+        # Preprocess texts for better embeddings
+        processed_texts = [preprocess_text_for_embedding(text) for text in texts]
         
         try:
-            test_text = texts[0] if texts else "test"
+            test_text = processed_texts[0] if processed_texts else "test"
             test_embedding = _model.encode([test_text], show_progress_bar=False)
-            return _model.encode(texts, show_progress_bar=False)
+            return _model.encode(processed_texts, show_progress_bar=False)
             
         except Exception as meta_error:
             if "meta tensor" in str(meta_error).lower():
@@ -389,7 +449,7 @@ def get_embeddings(texts):
                 try:
                     _model = None
                     _model = SentenceTransformer(
-                        "all-MiniLM-L6-v2",
+                        "all-mpnet-base-v2",  # Upgraded to better model
                         device="cpu",
                         model_kwargs={
                             "dtype": torch.float32,
@@ -438,8 +498,17 @@ def setup_collection():
                     distance=Distance.COSINE
                 )
             )
-            print(f"Created new collection: {COLLECTION_NAME}")
+            print(f"Created new collection: {COLLECTION_NAME} with vector size {VECTOR_SIZE}")
         else:
+            # Check if we need to recreate collection due to vector size change
+            try:
+                collection_info = _qdrant_client.get_collection(COLLECTION_NAME)
+                current_size = collection_info.config.params.vectors.size
+                if current_size != VECTOR_SIZE:
+                    print(f"🔄 Vector size mismatch detected. Current: {current_size}, Required: {VECTOR_SIZE}")
+                    print("⚠️ Please delete and recreate the collection manually or use the migration script.")
+            except Exception as e:
+                print(f"Warning: Could not check collection vector size: {e}")
             print(f"Using existing collection: {COLLECTION_NAME}")
         
         # Create indexes
@@ -682,6 +751,34 @@ def translate_answer_to_language(answer: str, target_lang: str) -> str:
         return answer
     return translate_text(answer, target_lang, 'en')
 
+def expand_query(query_text):
+    """Expand query with synonyms and related terms for better matching."""
+    # Query expansion mappings
+    expansions = {
+        'groundwater': ['ground water', 'aquifer', 'water table', 'subsurface water'],
+        'estimation': ['assessment', 'evaluation', 'calculation', 'analysis'],
+        'rainfall': ['precipitation', 'rain', 'monsoon'],
+        'extraction': ['withdrawal', 'pumping', 'usage', 'consumption'],
+        'recharge': ['replenishment', 'infiltration', 'percolation'],
+        'karnataka': ['karnataka state', 'bangalore', 'bengaluru'],
+        'maharashtra': ['maharashtra state', 'mumbai', 'pune'],
+        'tamil nadu': ['tamil nadu state', 'chennai', 'madras'],
+        'gujarat': ['gujarat state', 'ahmedabad', 'gandhinagar'],
+        'rajasthan': ['rajasthan state', 'jaipur', 'jodhpur']
+    }
+    
+    expanded_terms = [query_text]
+    
+    # Add expansions for each term in the query
+    query_lower = query_text.lower()
+    for term, synonyms in expansions.items():
+        if term in query_lower:
+            expanded_terms.extend(synonyms)
+    
+    # Create expanded query
+    expanded_query = " ".join(expanded_terms)
+    return expanded_query
+
 def search_excel_chunks(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
     """Retrieve most relevant Excel data rows using hybrid search, with optional year and location filtering."""
     _init_components()
@@ -724,16 +821,23 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
     qdrant_filter = Filter(must=qdrant_filter_conditions) if qdrant_filter_conditions else None
 
     try:
-        # Dense Retrieval (Qdrant)
+        # Expand query for better matching
+        expanded_query = expand_query(query_text)
+        
+        # Dense Retrieval (Qdrant) with enhanced preprocessing
         dense_hits = {}
         dense_payloads = {}
         if _model is not None:
-            query_vector = _model.encode([query_text])[0]
+            # Preprocess expanded query for better matching
+            processed_query = preprocess_text_for_embedding(expanded_query)
+            query_vector = _model.encode([processed_query])[0]
+            
+            # Increase limit to get more candidates for better filtering
             qdrant_results = _qdrant_client.search(
                 collection_name=COLLECTION_NAME,
                 query_vector=query_vector,
                 query_filter=qdrant_filter,
-                limit=20,
+                limit=50,  # Increased from 20 to 50 for better selection
                 with_payload=True
             )
             # Filter dense results by similarity threshold
@@ -743,33 +847,58 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
         # Sparse Retrieval (BM25)
         sparse_hits = {}
         if _bm25_model and _all_chunks and _bm25_df is not None:
-            tokenized_query = tokenize_text(query_text)
+            tokenized_query = tokenize_text(expanded_query)
             bm25_scores = _bm25_model.get_scores(tokenized_query)
             
             for i, score in enumerate(bm25_scores):
                 if score > 0:
                     chunk_text_bm25 = _all_chunks[i]
-                    if (year and _bm25_df.iloc[i]['Assessment_Year'] != year) or \
-                       (target_state and _bm25_df.iloc[i]['STATE'] != target_state) or \
-                       (target_district and _bm25_df.iloc[i]['DISTRICT'] != target_district):
-                            continue
+                    # Get original data for filtering
+                    original_data = _bm25_df.iloc[i]['original_data']
+                    if isinstance(original_data, dict):
+                        # Apply filters if the data contains the required fields
+                        if (year and original_data.get('Assessment_Year') != year) or \
+                           (target_state and original_data.get('STATE') != target_state) or \
+                           (target_district and original_data.get('DISTRICT') != target_district):
+                                continue
                     sparse_hits[chunk_text_bm25] = score
         
-        # Hybrid Scoring
+        # Enhanced Hybrid Scoring with adaptive weights
         combined_scores = {}
-        alpha = 0.5  # Can be made configurable
+        
+        # Adaptive alpha based on query characteristics
+        query_length = len(query_text.split())
+        if query_length <= 3:
+            alpha = 0.7  # Favor dense retrieval for short queries
+        elif query_length <= 8:
+            alpha = 0.6  # Balanced approach for medium queries
+        else:
+            alpha = 0.5  # More balanced for long queries
 
         all_candidate_texts = set(dense_hits.keys()).union(set(sparse_hits.keys()))
 
         if not all_candidate_texts:
             return []
         
+        # Enhanced normalization with smoothing
         max_dense_score = max(dense_hits.values()) if dense_hits else 1.0
         max_sparse_score = max(sparse_hits.values()) if sparse_hits else 1.0
+        
+        # Add small epsilon to prevent division by zero
+        epsilon = 1e-8
+        max_dense_score = max(max_dense_score, epsilon)
+        max_sparse_score = max(max_sparse_score, epsilon)
 
         for text_chunk in all_candidate_texts:
             dense_score = dense_hits.get(text_chunk, 0.0) / max_dense_score
             sparse_score = sparse_hits.get(text_chunk, 0.0) / max_sparse_score
+            
+            # Enhanced scoring with exponential boosting for high scores
+            if dense_score > 0.8:
+                dense_score = dense_score ** 0.8  # Boost high dense scores
+            if sparse_score > 0.8:
+                sparse_score = sparse_score ** 0.8  # Boost high sparse scores
+                
             combined_scores[text_chunk] = (alpha * dense_score) + ((1 - alpha) * sparse_score)
         
         sorted_chunks_with_scores = sorted(combined_scores.items(), key=lambda item: item[1], reverse=True)
@@ -784,7 +913,12 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
                 else:
                     matching_rows = _bm25_df[_bm25_df['combined_text'] == chunk_text]
                     if not matching_rows.empty:
-                        payload = matching_rows.iloc[0].to_dict()
+                        # Get the original data from the BM25 DataFrame
+                        original_data = matching_rows.iloc[0]['original_data']
+                        if isinstance(original_data, dict):
+                            payload = original_data
+                        else:
+                            payload = {"text": chunk_text}
                     else:
                         payload = {"text": chunk_text}
                 results_with_payloads.append({"score": score, "data": payload})
@@ -796,7 +930,7 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
         return []
 
 def re_rank_chunks(query_text, candidate_results, top_k=5):
-    """Re-ranks candidate results based on semantic similarity to the query."""
+    """Enhanced re-ranks candidate results based on semantic similarity to the query."""
     if not candidate_results:
         return []
 
@@ -808,8 +942,12 @@ def re_rank_chunks(query_text, candidate_results, top_k=5):
     if not candidate_texts:
         return []
 
-    query_embedding = _model.encode([query_text])[0]
-    chunk_embeddings = _model.encode(candidate_texts)
+    # Enhanced preprocessing for reranking
+    processed_query = preprocess_text_for_embedding(query_text)
+    processed_candidates = [preprocess_text_for_embedding(text) for text in candidate_texts]
+    
+    query_embedding = _model.encode([processed_query])[0]
+    chunk_embeddings = _model.encode(processed_candidates)
 
     query_embedding_norm = np.linalg.norm(query_embedding)
     chunk_embeddings_norm = np.linalg.norm(chunk_embeddings, axis=1)
@@ -822,7 +960,18 @@ def re_rank_chunks(query_text, candidate_results, top_k=5):
 
     re_ranked_scores = []
     for i, res in enumerate(candidate_results):
-        re_ranked_scores.append((res['data'], similarities[i]))
+        # Enhanced scoring: combine original score with semantic similarity
+        original_score = res.get('score', 0.0)
+        semantic_similarity = similarities[i]
+        
+        # Weighted combination: 70% semantic similarity, 30% original score
+        enhanced_score = 0.7 * semantic_similarity + 0.3 * original_score
+        
+        # Boost scores that are very high in either dimension
+        if semantic_similarity > 0.8 or original_score > 0.8:
+            enhanced_score = min(enhanced_score * 1.1, 1.0)  # 10% boost, cap at 1.0
+            
+        re_ranked_scores.append((res['data'], enhanced_score))
 
     re_ranked_scores.sort(key=lambda x: x[1], reverse=True)
 
@@ -991,12 +1140,15 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
   |-----------|---------------------|---------------------------|---------------------|-------------|
   | Rainfall Recharge | 15000.50 | 12000.25 | 0.0 | 27000.75 |
 
+CRITICAL: YOU MUST INCLUDE ALL 7 MANDATORY SECTIONS IN EVERY REPORT. NO EXCEPTIONS.
+
 MANDATORY SECTIONS TO INCLUDE IN EVERY REPORT:
 
 1. RAINFALL DATA (Detailed Breakdown):
    - Rainfall in Cultivated (C), Non-Cultivated (NC), and Perennial (PQ) areas
    - Total rainfall with units (mm)
    - Year-wise rainfall patterns if multiple years available
+   - Significance of rainfall for groundwater recharge
 
 2. GROUNDWATER SOURCES (Complete Source Analysis):
    - Rainfall Recharge (C, NC, PQ, Total)
@@ -1008,31 +1160,37 @@ MANDATORY SECTIONS TO INCLUDE IN EVERY REPORT:
    - Pipelines (C, NC, PQ, Total)
    - Sewages and Flash Flood Channels (C, NC, PQ, Total)
    - Total Annual Groundwater Recharge (C, NC, PQ, Total)
+   - Significance of each source for groundwater availability
 
 3. EXTRACTION PURPOSES (Detailed Use Analysis):
    - Ground Water Extraction for Domestic Use (C, NC, PQ, Total)
    - Ground Water Extraction for Industrial Use (C, NC, PQ, Total)
    - Ground Water Extraction for Irrigation (C, NC, PQ, Total)
    - Total Ground Water Extraction for all uses (C, NC, PQ, Total)
+   - Analysis of extraction patterns and sustainability
 
 4. FUTURE AVAILABILITY AND ALLOCATION:
    - Net Annual Ground Water Availability for Future Use (C, NC, PQ, Total)
    - Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (C, NC, PQ, Total)
    - Future sustainability projections
+   - Long-term resource management implications
 
 5. EXTRACTION STAGE ANALYSIS:
    - Stage of Ground Water Extraction (%) (C, NC, PQ, Total)
    - Sustainability indicators and over-extraction warnings
+   - Critical thresholds and management recommendations
 
 6. GEOGRAPHICAL AREA BREAKDOWN:
    - Total Geographical Area (C, NC, PQ, Total)
    - Recharge Worthy Area (C, NC, PQ, Total)
    - Hilly Area (Total)
+   - Area utilization and recharge potential analysis
 
 7. ENVIRONMENTAL AND QUALITY DATA:
    - Environmental Flows (C, NC, PQ, Total)
    - Quality Tagging parameters (if available)
    - Additional Potential Resources (if available)
+   - Environmental sustainability considerations
 
 IMPORTANT: STATE-LEVEL QUERIES WITHOUT SPECIFIC DISTRICTS:
 - If the query mentions only a state (e.g., "ground water estimation in karnataka") without specifying districts, automatically select and analyze ALL available districts from that state in the dataset.
@@ -1050,6 +1208,8 @@ IMPORTANT: STATE-LEVEL QUERIES WITHOUT SPECIFIC DISTRICTS:
 - Format the output like a professional groundwater assessment report with proper markdown tables.
 - NEVER use pipe characters (|) or hyphens (-) as text - only use them for markdown table formatting.
 - ALWAYS include the 7 mandatory sections above in every groundwater estimation report.
+- If any section has no data, still include it with "No data available" and explain the implications.
+- FAILURE TO INCLUDE ALL 7 SECTIONS WILL RESULT IN AN INCOMPLETE REPORT.
 """
         f"{conversation_history_str}"
         f"{extracted_params_str}"
