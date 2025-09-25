@@ -11,7 +11,8 @@ import LocationMap from '../components/LocationMap'
 import VisualizationModal from '../components/VisualizationModal'
 import voiceService from '../services/voiceService'
 
-function Chat() {
+function Chat1() {
+  console.log('Chat1 component loaded with voice features!')
   const [messages, setMessages] = useState([
     { id: 1, role: 'assistant', text: 'Hi! Ask me anything about groundwater estimation.' },
   ])
@@ -502,7 +503,7 @@ function Chat() {
               }}>
                 💧
               </div>
-              <h2 style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: '1.5rem', fontWeight: '700' }}>Groundwater Assistant</h2>
+              <h2 style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: '1.5rem', fontWeight: '700' }}>Groundwater Assistant 🎤 (Voice Enabled)</h2>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <button 
@@ -842,6 +843,6 @@ function Chat() {
   )
 }
 
-export default Chat
+export default Chat1
 
 
