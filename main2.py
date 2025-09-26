@@ -1073,61 +1073,80 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
 - For each data point, explain what it represents and its significance.
 - Organize data into logical categories: Rainfall Data, Geographical Area, Groundwater Recharge, Extraction Data, etc.
 - Use PROPER MARKDOWN TABLES for numerical data - format like this:
-  | Parameter | Cultivated (C) (ham) | Non-Cultivated (NC) (ham) | Perennial (PQ) (ham) | Total (ham) |
-  |-----------|---------------------|---------------------------|---------------------|-------------|
-  | Rainfall Recharge | 15000.50 | 12000.25 | 0.0 | 27000.75 |
+  | Parameter | Value (ham) | Unit | Significance |
+  |-----------|-------------|------|--------------|
+  | Ground Water Recharge | 15000.50 | ham | Annual recharge from rainfall |
 
-CRITICAL: YOU MUST INCLUDE ALL 7 MANDATORY SECTIONS IN EVERY REPORT. NO EXCEPTIONS.
+CRITICAL: YOU MUST INCLUDE ALL 8 MANDATORY SECTIONS IN EVERY REPORT. NO EXCEPTIONS.
 
 MANDATORY SECTIONS TO INCLUDE IN EVERY REPORT:
 
-1. RAINFALL DATA (Detailed Breakdown):
-   - Rainfall in Cultivated (C), Non-Cultivated (NC), and Perennial (PQ) areas
-   - Total rainfall with units (mm)
-   - Year-wise rainfall patterns if multiple years available
-   - Significance of rainfall for groundwater recharge
+1. 🚨 CRITICALITY ALERT & SUSTAINABILITY STATUS:
+   - Stage of Ground Water Extraction (%) - categorize as Safe (<70%), Semi-Critical (70-90%), Critical (90-100%), or Over-exploited (≥100%)
+   - Groundwater categorization (safe, semi_critical, critical, over_exploited)
+   - Immediate action alerts for over-exploited areas
+   - Sustainability indicators and warnings
 
-2. GROUNDWATER SOURCES (Complete Source Analysis):
-   - Rainfall Recharge (C, NC, PQ, Total)
-   - Canals (C, NC, PQ, Total)
-   - Surface Water Irrigation (C, NC, PQ, Total)
-   - Ground Water Irrigation (C, NC, PQ, Total)
-   - Tanks and Ponds (C, NC, PQ, Total)
-   - Water Conservation Structures (C, NC, PQ, Total)
-   - Pipelines (C, NC, PQ, Total)
-   - Sewages and Flash Flood Channels (C, NC, PQ, Total)
-   - Total Annual Groundwater Recharge (C, NC, PQ, Total)
-   - Significance of each source for groundwater availability
+2. 📈 GROUNDWATER TREND ANALYSIS:
+   - Pre-monsoon groundwater trend (Rising/Falling/Neither Rising Nor Falling)
+   - Post-monsoon groundwater trend (Rising/Falling/Neither Rising Nor Falling)
+   - Trend implications for groundwater management
+   - Seasonal variation analysis
 
-3. EXTRACTION PURPOSES (Detailed Use Analysis):
-   - Ground Water Extraction for Domestic Use (C, NC, PQ, Total)
-   - Ground Water Extraction for Industrial Use (C, NC, PQ, Total)
-   - Ground Water Extraction for Irrigation (C, NC, PQ, Total)
-   - Total Ground Water Extraction for all uses (C, NC, PQ, Total)
-   - Analysis of extraction patterns and sustainability
+3. 🌧️ RAINFALL & RECHARGE DATA:
+   - Rainfall (mm) - annual precipitation affecting recharge
+   - Ground Water Recharge (ham) - recharge from rainfall
+   - Annual Ground Water Recharge (ham) - total annual recharge
+   - Environmental Flows (ham) - environmental water requirements
+   - Significance of rainfall patterns for groundwater availability
 
-4. FUTURE AVAILABILITY AND ALLOCATION:
-   - Net Annual Ground Water Availability for Future Use (C, NC, PQ, Total)
-   - Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (C, NC, PQ, Total)
-   - Future sustainability projections
-   - Long-term resource management implications
+4. 💧 GROUNDWATER EXTRACTION & AVAILABILITY:
+   - Ground Water Extraction for all uses (ham) - total extraction
+   - Annual Extractable Ground Water Resource (ham) - available resource
+   - Net Annual Ground Water Availability for Future Use (ham) - future availability
+   - Allocation for Domestic Utilisation for 2025 (ham) - projected domestic allocation
+   - Extraction efficiency and sustainability analysis
 
-5. EXTRACTION STAGE ANALYSIS:
-   - Stage of Ground Water Extraction (%) (C, NC, PQ, Total)
-   - Sustainability indicators and over-extraction warnings
-   - Critical thresholds and management recommendations
-
-6. GEOGRAPHICAL AREA BREAKDOWN:
-   - Total Geographical Area (C, NC, PQ, Total)
-   - Recharge Worthy Area (C, NC, PQ, Total)
-   - Hilly Area (Total)
-   - Area utilization and recharge potential analysis
-
-7. ENVIRONMENTAL AND QUALITY DATA:
-   - Environmental Flows (C, NC, PQ, Total)
-   - Quality Tagging parameters (if available)
-   - Additional Potential Resources (if available)
+5. 🔬 WATER QUALITY & ENVIRONMENTAL CONCERNS:
+   - Quality Tagging - water quality issues (Iron, Uranium, Nitrate, etc.)
+   - Quality concerns and health implications
+   - Treatment recommendations for quality issues
    - Environmental sustainability considerations
+
+6. 🏖️ COASTAL & SPECIAL AREAS:
+   - Coastal Areas identification - special attention for saltwater intrusion
+   - Additional Potential Resources under specific conditions (ham)
+   - Special management requirements for vulnerable areas
+   - Climate resilience considerations
+
+7. 🏗️ GROUNDWATER STORAGE & RESOURCES:
+   - Instorage Unconfined Ground Water Resources (ham)
+   - Total Ground Water Availability in Unconfined Aquifer (ham)
+   - Dynamic Confined Ground Water Resources (ham)
+   - Instorage Confined Ground Water Resources (ham)
+   - Total Confined Ground Water Resources (ham)
+   - Dynamic Semi-confined Ground Water Resources (ham)
+   - Instorage Semi-confined Ground Water Resources (ham)
+   - Total Semi-confined Ground Water Resources (ham)
+   - Total Ground Water Availability in the Area (ham)
+
+8. 🌊 WATERSHED & ADMINISTRATIVE ANALYSIS:
+   - Watershed District and Category (safe, semi_critical, critical, over_exploited)
+   - Administrative divisions (Tehsil, Taluk, Block, Mandal, Village)
+   - Watershed-specific management recommendations
+   - Local governance and management structure
+
+ENHANCED INSIGHTS TO INCLUDE:
+- 🚨 CRITICAL ALERT: Highlight over-exploited areas with immediate action required
+- 📈 TREND ANALYSIS: Show groundwater direction and implications
+- 🔬 QUALITY CONCERN: Identify water quality issues and treatment needs
+- 🏖️ COASTAL VULNERABILITY: Special attention for coastal areas
+- 💧 ADDITIONAL POTENTIAL: Show additional resources under specific conditions
+- 📊 SUSTAINABILITY STATUS: Categorize based on extraction levels
+- 🌧️ RAINFALL IMPACT: Analyze rainfall patterns affecting recharge
+- 🏗️ STORAGE ANALYSIS: Detail confined/unconfined groundwater resources
+- 📅 TEMPORAL TREND: Show year-wise changes in groundwater levels
+- 🌊 WATERSHED STATUS: Watershed category requiring specific management
 
 IMPORTANT: STATE-LEVEL QUERIES WITHOUT SPECIFIC DISTRICTS:
 - If the query mentions only a state (e.g., "ground water estimation in karnataka") without specifying districts, automatically select and analyze ALL available districts from that state in the dataset.
@@ -1144,9 +1163,9 @@ IMPORTANT: STATE-LEVEL QUERIES WITHOUT SPECIFIC DISTRICTS:
 - If data is missing for certain columns, mention that explicitly.
 - Format the output like a professional groundwater assessment report with proper markdown tables.
 - NEVER use pipe characters (|) or hyphens (-) as text - only use them for markdown table formatting.
-- ALWAYS include the 7 mandatory sections above in every groundwater estimation report.
+- ALWAYS include the 8 mandatory sections above in every groundwater estimation report.
 - If any section has no data, still include it with "No data available" and explain the implications.
-- FAILURE TO INCLUDE ALL 7 SECTIONS WILL RESULT IN AN INCOMPLETE REPORT.
+- FAILURE TO INCLUDE ALL 8 SECTIONS WILL RESULT IN AN INCOMPLETE REPORT.
 """
         f"{conversation_history_str}"
         f"{extracted_params_str}"
@@ -1258,9 +1277,32 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     
     target_state = None
     target_district = None
-    if _master_df is not None:
-        unique_states = _master_df['STATE'].unique().tolist()
-        unique_districts = _master_df['DISTRICT'].unique().tolist()
+    
+    # Load INGRIS data for state extraction (use the same data as Qdrant)
+    try:
+        ingris_df = pd.read_csv("ingris_rag_ready_complete.csv", skiprows=1)
+        # Clean column names to match the structure
+        ingris_df.columns = [
+            'serial_number', 'state', 'district', 'island', 'watershed_district',
+            'rainfall_mm', 'total_geographical_area_ha', 'ground_water_recharge_ham',
+            'inflows_and_outflows_ham', 'annual_ground_water_recharge_ham',
+            'environmental_flows_ham', 'annual_extractable_ground_water_resource_ham',
+            'ground_water_extraction_for_all_uses_ham', 'stage_of_ground_water_extraction_',
+            'categorization_of_assessment_unit', 'pre_monsoon_of_gw_trend',
+            'post_monsoon_of_gw_trend', 'allocation_of_ground_water_resource_for_domestic_utilisation_for_projected_year_2025_ham',
+            'net_annual_ground_water_availability_for_future_use_ham', 'quality_tagging',
+            'additional_potential_resources_under_specific_conditionsham', 'coastal_areas',
+            'instorage_unconfined_ground_water_resourcesham', 'total_ground_water_availability_in_unconfined_aquifier_ham',
+            'dynamic_confined_ground_water_resourcesham', 'instorage_confined_ground_water_resourcesham',
+            'total_confined_ground_water_resources_ham', 'dynamic_semi_confined_ground_water_resources_ham',
+            'instorage_semi_confined_ground_water_resources_ham', 'total_semiconfined_ground_water_resources_ham',
+            'total_ground_water_availability_in_the_area_ham', 'source_file', 'year',
+            'tehsil', 'taluk', 'block', 'valley', 'assessment_unit', 'mandal',
+            'village', 'watershed_category', 'firka', 'combined_text'
+        ]
+        
+        unique_states = ingris_df['state'].dropna().unique().tolist()
+        unique_districts = ingris_df['district'].dropna().unique().tolist()
         
         # Try to find state with fuzzy matching
         for state in unique_states:
@@ -1275,7 +1317,7 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
                     break
 
         if target_state:
-            districts_in_state = _master_df[_master_df['STATE'] == target_state]['DISTRICT'].unique().tolist()
+            districts_in_state = ingris_df[ingris_df['state'] == target_state]['district'].unique().tolist()
             for district in districts_in_state:
                 if pd.notna(district):
                     # Exact match
@@ -1286,6 +1328,37 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
                     elif str(district).lower() in translated_query.lower():
                         target_district = district
                         break
+    except Exception as e:
+        print(f"Warning: Could not load INGRIS data for state extraction: {e}")
+        # Fallback to master_df if INGRIS data fails
+        if _master_df is not None:
+            unique_states = _master_df['STATE'].unique().tolist()
+            unique_districts = _master_df['DISTRICT'].unique().tolist()
+            
+            # Try to find state with fuzzy matching
+            for state in unique_states:
+                if pd.notna(state):
+                    # Exact match
+                    if re.search(r'\b' + re.escape(str(state)) + r'\b', translated_query, re.IGNORECASE):
+                        target_state = state
+                        break
+                    # Partial match
+                    elif str(state).lower() in translated_query.lower():
+                        target_state = state
+                        break
+
+            if target_state:
+                districts_in_state = _master_df[_master_df['STATE'] == target_state]['DISTRICT'].unique().tolist()
+                for district in districts_in_state:
+                    if pd.notna(district):
+                        # Exact match
+                        if re.search(r'\b' + re.escape(str(district)) + r'\b', translated_query, re.IGNORECASE):
+                            target_district = district
+                            break
+                        # Partial match
+                        elif str(district).lower() in translated_query.lower():
+                            target_district = district
+                            break
     
     # Enhanced NLP for extracting specific groundwater parameters
     extracted_parameters = {}
