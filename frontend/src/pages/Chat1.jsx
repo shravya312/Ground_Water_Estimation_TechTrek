@@ -359,18 +359,73 @@ function Chat1() {
   }, [messages])
 
   return (
-    <div className="chat-root" style={{ display: 'flex', height: '100vh', maxHeight: '100vh', overflow: 'hidden' }}>
-      {/* History panel */}
-      <aside className="chat-sidebar" style={{
-        width: 320,
-        background: 'var(--gradient-surface)',
-        color: 'var(--color-text-primary)',
-        padding: '1.5rem',
-        overflowY: 'auto',
-        borderRight: '1px solid var(--color-border)',
-        boxShadow: 'var(--shadow-md)'
+    <div style={{ 
+      height: '100vh', 
+      display: 'flex',
+      backgroundColor: '#f8fafc',
+      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      overflow: 'hidden'
+    }}>
+      {/* Sidebar */}
+      <aside style={{
+        width: '320px',
+        backgroundColor: 'white',
+        borderRight: '1px solid #e2e8f0',
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh'
       }}>
-        <div style={{ marginBottom: '1.5rem' }}>
+        {/* Sidebar Header */}
+        <div style={{
+          padding: '1.5rem',
+          borderBottom: '1px solid #e2e8f0',
+          backgroundColor: '#f8fafc'
+        }}>
+          <div style={{ 
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            marginBottom: '1rem'
+          }}>
+            {/* Logo */}
+            <div style={{ 
+              width: '40px',
+              height: '40px',
+              backgroundColor: '#1e3a8a',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <img 
+                src="/logo1.png" 
+                alt="Logo" 
+                style={{
+                  height: '24px',
+                  width: 'auto',
+                  objectFit: 'contain'
+                }}
+              />
+            </div>
+            <div>
+              <h3 style={{ 
+                fontSize: '0.875rem',
+                fontWeight: '600',
+                color: '#1e293b',
+                margin: 0
+              }}>
+                Groundwater Assistant
+              </h3>
+              <p style={{ 
+                fontSize: '0.75rem',
+                color: '#64748b',
+                margin: 0
+              }}>
+                AI-Powered Analysis
+              </p>
+            </div>
+          </div>
+          
           <LanguageSelector 
             selectedLanguage={selectedLanguage}
             onLanguageChange={setSelectedLanguage}
@@ -378,220 +433,318 @@ function Chat1() {
           />
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-          <h3 style={{ margin: 0 }}>Chat History</h3>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {history.length > 0 && (
-              <button 
-                onClick={handleClearHistory}
+        {/* Chat Controls */}
+        <div style={{
+          padding: '1rem 1.5rem',
+          borderBottom: '1px solid #e2e8f0'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <h4 style={{ 
+              fontSize: '0.875rem',
+              fontWeight: '600',
+              color: '#374151',
+              margin: 0
+            }}>
+              Conversations
+            </h4>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              {history.length > 0 && (
+                <button 
+                  onClick={handleClearHistory}
+                  style={{
+                    padding: '0.25rem 0.5rem',
+                    backgroundColor: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    color: '#dc2626',
+                    fontSize: '0.75rem',
+                    borderRadius: '0.375rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#fee2e2'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = '#fef2f2'}
+                  title="Clear all chat history"
+                >
+                  Clear
+                </button>
+              )}
+              <Link 
+                to="/" 
                 style={{
-                  background: 'rgba(220, 38, 38, 0.1)',
-                  border: '1px solid rgba(220, 38, 38, 0.3)',
-                  color: '#dc2626',
                   padding: '0.25rem 0.5rem',
-                  borderRadius: 4,
+                  color: '#6b7280',
                   fontSize: '0.75rem',
-                  cursor: 'pointer'
+                  textDecoration: 'none',
+                  borderRadius: '0.375rem',
+                  transition: 'all 0.2s ease'
                 }}
-                title="Clear all chat history"
+                onMouseOver={(e) => e.target.style.color = '#0ea5e9'}
+                onMouseOut={(e) => e.target.style.color = '#6b7280'}
               >
-                Clear
-              </button>
-            )}
-            <Link to="/" style={{ color: '#0f172a', fontSize: '0.9rem' }}>Home</Link>
+                Home
+              </Link>
+            </div>
           </div>
+          
+          <button 
+            onClick={() => {
+              setMessages([{ id: 1, role: 'assistant', text: 'Hi! Ask me anything about groundwater estimation.' }])
+              setSelectedHistoryIndex(-1)
+              setCurrentConversationId(null)
+            }}
+            style={{
+              width: '100%',
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              border: '1px solid #d1d5db',
+              backgroundColor: selectedHistoryIndex === -1 ? '#0ea5e9' : 'white',
+              color: selectedHistoryIndex === -1 ? 'white' : '#374151',
+              fontSize: '0.875rem',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem'
+            }}
+            onMouseOver={(e) => {
+              if (selectedHistoryIndex !== -1) {
+                e.target.style.backgroundColor = '#f3f4f6'
+                e.target.style.borderColor = '#9ca3af'
+              }
+            }}
+            onMouseOut={(e) => {
+              if (selectedHistoryIndex !== -1) {
+                e.target.style.backgroundColor = 'white'
+                e.target.style.borderColor = '#d1d5db'
+              }
+            }}
+          >
+            <span style={{ fontSize: '1rem' }}>+</span>
+            New Chat
+          </button>
         </div>
         
-        <button 
-          onClick={() => {
-            setMessages([{ id: 1, role: 'assistant', text: 'Hi! Ask me anything about groundwater estimation.' }])
-            setSelectedHistoryIndex(-1)
-            setCurrentConversationId(null)
-          }}
-          style={{
-            width: '100%',
-            padding: '0.6rem',
-            marginBottom: '1rem',
-            background: selectedHistoryIndex === -1 ? 'rgba(153,176,176,0.4)' : 'rgba(153,176,176,0.3)',
-            border: selectedHistoryIndex === -1 ? '1px solid rgba(153,176,176,0.6)' : '1px solid rgba(153,176,176,0.5)',
-            borderRadius: 6,
-            color: '#0f172a',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            fontSize: '0.85rem',
-            transition: 'all 0.2s ease'
-          }}
-          onMouseOver={(e) => {
-            if (selectedHistoryIndex !== -1) {
-              e.target.style.background = 'rgba(153,176,176,0.4)'
-              e.target.style.transform = 'translateY(-1px)'
-            }
-          }}
-          onMouseOut={(e) => {
-            if (selectedHistoryIndex !== -1) {
-              e.target.style.background = 'rgba(153,176,176,0.3)'
-              e.target.style.transform = 'translateY(0)'
-            }
-          }}
-        >
-          + New Chat
-        </button>
-        
-        {loadingHistory ? (
-          <div style={{ textAlign: 'center', opacity: 0.7, padding: '1rem' }}>
-            Loading chat history...
-          </div>
-        ) : (
-          <ul style={{ listStyle: 'none', padding: 0, marginTop: '1rem' }}>
-            {history.length === 0 && (
-              <li style={{ opacity: 0.7, padding: '1rem', textAlign: 'center' }}>
-                No chat history yet. Start a conversation!
-              </li>
-            )}
-            {history.map((item, idx) => (
-              <li key={idx} className="glass" style={{ 
-                padding: '0.6rem 0.8rem', 
-                marginBottom: '0.6rem', 
-                background: selectedHistoryIndex === idx ? 'rgba(153,176,176,0.4)' : 'rgba(252,250,240,0.6)',
-                borderRadius: 6,
-                fontSize: '0.85rem',
-                lineHeight: 1.3,
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                border: selectedHistoryIndex === idx ? '1px solid rgba(153,176,176,0.6)' : '1px solid transparent'
-              }}
-              onClick={() => loadConversationFromHistory(item, idx)}
-              onMouseOver={(e) => {
-                if (selectedHistoryIndex !== idx) {
-                  e.target.style.background = 'rgba(153,176,176,0.3)'
-                  e.target.style.border = '1px solid rgba(153,176,176,0.5)'
-                  e.target.style.transform = 'translateY(-1px)'
-                }
-              }}
-              onMouseOut={(e) => {
-                if (selectedHistoryIndex !== idx) {
-                  e.target.style.background = 'rgba(252,250,240,0.6)'
-                  e.target.style.border = '1px solid transparent'
-                  e.target.style.transform = 'translateY(0)'
-                }
-              }}
-              title="Click to load this conversation"
-              >
-                {typeof item === 'string' ? item : (item?.text || '(no prompt)')}
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* Chat History List */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
+          {loadingHistory ? (
+            <div style={{
+              textAlign: 'center',
+              padding: '2rem',
+              color: '#6b7280',
+              fontSize: '0.875rem'
+            }}>
+              Loading chat history...
+            </div>
+          ) : (
+            <div>
+              {history.length === 0 && (
+                <div style={{
+                  textAlign: 'center',
+                  padding: '2rem',
+                  color: '#9ca3af',
+                  fontSize: '0.875rem'
+                }}>
+                  No conversations yet. Start chatting!
+                </div>
+              )}
+              {history.map((item, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    padding: '0.75rem',
+                    margin: '0.25rem',
+                    borderRadius: '0.5rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    backgroundColor: selectedHistoryIndex === idx ? '#0ea5e9' : 'transparent',
+                    color: selectedHistoryIndex === idx ? 'white' : '#374151',
+                    border: selectedHistoryIndex === idx ? 'none' : '1px solid transparent'
+                  }}
+                  onClick={() => loadConversationFromHistory(item, idx)}
+                  onMouseOver={(e) => {
+                    if (selectedHistoryIndex !== idx) {
+                      e.target.style.backgroundColor = '#f3f4f6'
+                    }
+                  }}
+                  onMouseOut={(e) => {
+                    if (selectedHistoryIndex !== idx) {
+                      e.target.style.backgroundColor = 'transparent'
+                    }
+                  }}
+                  title="Click to load this conversation"
+                >
+                  <div style={{
+                    fontSize: '0.875rem',
+                    lineHeight: '1.4',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap'
+                  }}>
+                    {typeof item === 'string' ? item : (item?.text || '(no prompt)')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </aside>
 
-      {/* Chat area */}
-      <main className="chat-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--color-background)' }}>
-        <header className="glass" style={{ padding: '1.5rem 2rem', margin: '1.5rem', borderRadius: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
-                background: 'var(--gradient-primary)',
+      {/* Main Chat Area */}
+      <main style={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        backgroundColor: '#ffffff',
+        height: '100vh'
+      }}>
+        {/* Chat Header */}
+        <header style={{
+          backgroundColor: 'white',
+          borderBottom: '1px solid #e2e8f0',
+          padding: '1rem 1.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexShrink: 0
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              background: 'linear-gradient(135deg, #0ea5e9, #1e40af)',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.25rem',
+              color: 'white'
+            }}>
+              💧
+            </div>
+            <div>
+              <h1 style={{
+                fontSize: '1.125rem',
+                fontWeight: '600',
+                color: '#1e293b',
+                margin: 0
+              }}>
+                Groundwater Assistant
+              </h1>
+              <p style={{
+                fontSize: '0.75rem',
+                color: '#64748b',
+                margin: 0
+              }}>
+                AI-Powered • Voice Enabled
+              </p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button 
+              onClick={() => setShowLocationMap(true)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                color: '#374151',
+                transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.backgroundColor = '#f1f5f9'
+                e.target.style.borderColor = '#cbd5e1'
+              }}
+              onMouseOut={(e) => {
+                e.target.style.backgroundColor = '#f8fafc'
+                e.target.style.borderColor = '#e2e8f0'
+              }}
+            >
+              📍 Location
+            </button>
+            <button 
+              onClick={() => setShowVisualizationPanel(true)}
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                color: '#374151',
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.backgroundColor = '#f1f5f9'
+                e.target.style.borderColor = '#cbd5e1'
+              }}
+              onMouseOut={(e) => {
+                e.target.style.backgroundColor = '#f8fafc'
+                e.target.style.borderColor = '#e2e8f0'
+              }}
+            >
+              📊 Charts
+            </button>
+            <button 
+              onClick={() => signOut(auth)} 
+              style={{
+                padding: '0.5rem 1rem',
+                backgroundColor: '#ef4444',
+                border: '1px solid #dc2626',
+                borderRadius: '0.5rem',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: '500',
                 color: 'white',
-                fontSize: '1.2rem',
-                fontWeight: '600'
-              }}>
-                💧
-              </div>
-              <h2 style={{ margin: 0, color: 'var(--color-text-primary)', fontSize: '1.5rem', fontWeight: '700' }}>Groundwater Assistant 🎤 (Voice Enabled)</h2>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <button 
-                onClick={() => setShowLocationMap(true)}
-                style={{ 
-                  padding: '0.75rem 1.5rem',
-                  fontSize: '0.9rem',
-                  background: 'var(--gradient-secondary)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseOver={(e) => {
-                  e.target.style.transform = 'translateY(-1px)'
-                  e.target.style.boxShadow = 'var(--shadow-lg)'
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.transform = 'translateY(0)'
-                  e.target.style.boxShadow = 'none'
-                }}
-              >
-                📍 Location Analysis
-              </button>
-              <button 
-                onClick={() => setShowVisualizationPanel(true)}
-                style={{ 
-                  padding: '0.75rem 1.5rem',
-                  fontSize: '0.9rem',
-                  background: 'var(--gradient-primary)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseOver={(e) => {
-                  e.target.style.transform = 'translateY(-1px)'
-                  e.target.style.boxShadow = 'var(--shadow-lg)'
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.transform = 'translateY(0)'
-                  e.target.style.boxShadow = 'none'
-                }}
-              >
-                📊 Visualizations
-              </button>
-              <LanguageSelector 
-                selectedLanguage={selectedLanguage}
-                onLanguageChange={setSelectedLanguage}
-                className="header-language-selector"
-              />
-              <button onClick={() => signOut(auth)} style={{ 
-                padding: '0.75rem 1.5rem',
-                fontSize: '0.9rem',
-                background: 'var(--gradient-secondary)'
-              }}>Sign out</button>
-            </div>
+                transition: 'all 0.2s ease'
+              }}
+              onMouseOver={(e) => {
+                e.target.style.backgroundColor = '#dc2626'
+              }}
+              onMouseOut={(e) => {
+                e.target.style.backgroundColor = '#ef4444'
+              }}
+            >
+              Sign out
+            </button>
           </div>
         </header>
 
-        <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', padding: '0 1rem' }}>
-          <div className="chat-messages-inner" style={{ maxWidth: 860, margin: '0 auto' }}>
+        {/* Messages Area */}
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '1rem',
+          backgroundColor: '#f8fafc'
+        }}>
+          <div style={{ maxWidth: '800px', margin: '0 auto', paddingBottom: '1rem' }}>
             {messages.map(m => (
-              <div key={m.id} className="fade-in-up" style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', margin: '0.5rem 0' }}>
-                <div className="glass" style={{
-                  background: m.role === 'user' 
-                    ? 'var(--gradient-primary)' 
-                    : 'var(--color-surface)',
-                  color: m.role === 'user' ? 'white' : 'var(--color-text-primary)',
-                  padding: '1.25rem 1.5rem',
-                  borderRadius: 20,
-                  maxWidth: '80%',
-                  border: m.role === 'user' ? 'none' : '1px solid var(--color-border)',
-                  boxShadow: m.role === 'user' 
-                    ? 'var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.2)' 
-                    : 'var(--shadow-md)',
-                  position: 'relative',
-                  marginBottom: '1rem'
+              <div key={m.id} style={{
+                display: 'flex',
+                justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
+                marginBottom: '1rem'
+              }}>
+                <div style={{
+                  maxWidth: '70%',
+                  padding: '0.75rem 1rem',
+                  borderRadius: m.role === 'user' ? '1rem 1rem 0.25rem 1rem' : '1rem 1rem 1rem 0.25rem',
+                  backgroundColor: m.role === 'user' ? '#0ea5e9' : 'white',
+                  color: m.role === 'user' ? 'white' : '#1e293b',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                  border: m.role === 'user' ? 'none' : '1px solid #e2e8f0',
+                  fontSize: '0.875rem',
+                  lineHeight: '1.5'
                 }}>
                   {m.role === 'assistant' ? (
                     <EnhancedMarkdownRenderer 
@@ -609,18 +762,24 @@ function Chat1() {
           </div>
         </div>
 
-        <form onSubmit={handleSend} className="pulse-focus" style={{ padding: '1.5rem' }}>
-          <div className="glass chat-input" style={{ 
-            display: 'flex', 
-            gap: 16, 
-            maxWidth: 900, 
-            margin: '0 auto', 
-            padding: 20,
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            boxShadow: 'var(--shadow-lg)',
-            borderRadius: 24
-          }}>
+        {/* Input Form */}
+        <div style={{
+          backgroundColor: 'white',
+          borderTop: '1px solid #e2e8f0',
+          padding: '1rem 1.5rem',
+          flexShrink: 0
+        }}>
+          <form onSubmit={handleSend} style={{ maxWidth: '800px', margin: '0 auto' }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'flex-end',
+              gap: '0.75rem',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '1rem',
+              padding: '0.5rem',
+              transition: 'all 0.2s ease'
+            }}>
             <button
               type="button"
               onClick={() => {
@@ -672,83 +831,72 @@ function Chat1() {
                   }
                 }
               }}
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                border: recording ? '1px solid rgba(220,38,38,0.6)' : '1px solid var(--color-border)',
-                background: recording ? 'rgba(220,38,38,0.1)' : 'var(--color-surface-elevated)',
-                color: 'var(--color-text-primary)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '1.1rem',
-                boxShadow: recording ? '0 0 0 0 rgba(220,38,38,0.6)' : 'none',
-                animation: recording ? 'pulse-glow 1.5s ease-out infinite' : 'none'
-              }}
+              className={`w-11 h-11 rounded-xl cursor-pointer flex items-center justify-center text-lg transition-all duration-300 ${
+                recording 
+                  ? 'border border-red-300 bg-red-50 text-red-600 animate-pulse' 
+                  : 'border border-gray-200 bg-gray-50 text-gray-600 hover:border-blue-500 hover:bg-blue-50'
+              }`}
               title={recording ? 'Stop voice input' : 'Start voice input'}
             >
               {recording ? '🛑' : '🎤'}
             </button>
-            <style>{`
-              @keyframes pulse-glow {
-                0% { box-shadow: 0 0 0 0 rgba(220,38,38,0.6); }
-                70% { box-shadow: 0 0 0 10px rgba(220,38,38,0); }
-                100% { box-shadow: 0 0 0 0 rgba(220,38,38,0); }
-              }
-            `}</style>
-            <input
-              value={recording ? liveTranscript : input}
-              onChange={e => {
-                if (!recording) {
-                  setInput(e.target.value)
-                }
-              }}
-              placeholder={recording ? "Listening... speak now" : "Ask about groundwater data..."}
-              style={{
-                flex: 1,
-                border: recording ? '2px solid rgba(34, 197, 94, 0.6)' : '1px solid var(--color-border)',
-                padding: '1rem 1.25rem',
-                borderRadius: 16,
-                background: recording ? 'rgba(34, 197, 94, 0.05)' : 'var(--color-surface-elevated)',
-                fontSize: '1rem',
-                color: 'var(--color-text-primary)',
-                outline: 'none',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                fontWeight: '500'
-              }}
-              onFocus={(e) => {
-                if (!recording) {
-                  e.target.style.borderColor = 'var(--color-primary)';
-                  e.target.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.2)';
-                  e.target.style.background = 'var(--color-surface)';
-                }
-              }}
-              onBlur={(e) => {
-                if (!recording) {
-                  e.target.style.borderColor = 'var(--color-border)';
-                  e.target.style.boxShadow = 'none';
-                  e.target.style.background = 'var(--color-surface-elevated)';
-                }
-              }}
-              readOnly={recording}
-            />
-            <button 
-              type="submit" 
-              className="chat-send" 
-              disabled={sending} 
-              style={{ 
-                borderRadius: 12,
-                padding: '0.875rem 1.5rem',
-                fontSize: '1rem',
-                fontWeight: '600'
-              }}
-            >
-              {sending ? 'Sending…' : 'Send'}
-            </button>
-          </div>
-        </form>
+              <input
+                value={recording ? liveTranscript : input}
+                onChange={e => {
+                  if (!recording) {
+                    setInput(e.target.value)
+                  }
+                }}
+                placeholder={recording ? "Listening... speak now" : "Ask about groundwater data..."}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem 1rem',
+                  border: 'none',
+                  outline: 'none',
+                  backgroundColor: 'transparent',
+                  fontSize: '0.875rem',
+                  color: '#374151',
+                  resize: 'none',
+                  maxHeight: '120px',
+                  minHeight: '24px'
+                }}
+                readOnly={recording}
+              />
+              <button 
+                type="submit" 
+                disabled={sending} 
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  backgroundColor: '#0ea5e9',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '0.75rem',
+                  cursor: sending ? 'not-allowed' : 'pointer',
+                  fontWeight: '600',
+                  fontSize: '0.875rem',
+                  transition: 'all 0.2s ease',
+                  opacity: sending ? 0.6 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem'
+                }}
+                onMouseOver={(e) => {
+                  if (!sending) {
+                    e.target.style.backgroundColor = '#0284c7'
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (!sending) {
+                    e.target.style.backgroundColor = '#0ea5e9'
+                  }
+                }}
+              >
+                {sending ? '⏳' : '→'}
+                {sending ? 'Sending' : 'Send'}
+              </button>
+            </div>
+          </form>
+        </div>
       </main>
       
       {/* Visualization Panel */}
@@ -766,62 +914,59 @@ function Chat1() {
       
       {/* Location Map Modal */}
       {showLocationMap && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: '2rem'
-        }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-8">
           <div style={{
-            background: 'var(--color-surface)',
-            borderRadius: 20,
-            boxShadow: 'var(--shadow-xl)',
+            background: 'white',
+            borderRadius: '20px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
             width: '100%',
-            maxWidth: '800px',
+            maxWidth: '4xl',
             height: '70vh',
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            border: '2px solid #e0f2fe'
           }}>
             {/* Header */}
             <div style={{
-              padding: '1.5rem 2rem',
-              borderBottom: '1px solid var(--color-border)',
+              padding: '1.5rem',
+              borderBottom: '1px solid #e0f2fe',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between'
             }}>
-              <h2 style={{ margin: 0, color: 'var(--color-text-primary)' }}>
+              <h2 style={{
+                fontSize: '1.25rem',
+                fontWeight: 'bold',
+                color: '#1e293b',
+                margin: 0
+              }}>
                 📍 Location-Based Groundwater Analysis
               </h2>
-              <button
+              <button 
                 onClick={() => setShowLocationMap(false)}
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '1.5rem',
-                  cursor: 'pointer',
-                  color: 'var(--color-text-secondary)',
-                  padding: '0.5rem',
-                  borderRadius: '50%',
                   width: '40px',
                   height: '40px',
+                  borderRadius: '50%',
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.25rem',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                  padding: '8px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center'
+                  justifyContent: 'center',
+                  transition: 'all 0.3s ease'
                 }}
                 onMouseOver={(e) => {
-                  e.target.style.background = 'var(--color-surface-elevated)'
+                  e.target.style.backgroundColor = '#f1f5f9'
+                  e.target.style.color = '#0ea5e9'
                 }}
                 onMouseOut={(e) => {
-                  e.target.style.background = 'none'
+                  e.target.style.backgroundColor = 'transparent'
+                  e.target.style.color = '#64748b'
                 }}
               >
                 ✕
@@ -829,7 +974,7 @@ function Chat1() {
             </div>
 
             {/* Map Content */}
-            <div style={{ flex: 1, padding: '1.5rem' }}>
+            <div className="flex-1 p-6">
               <LocationMap
                 location={userLocation}
                 onLocationChange={handleLocationChange}

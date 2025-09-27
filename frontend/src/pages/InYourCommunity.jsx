@@ -10,35 +10,48 @@ function InYourCommunity() {
   };
 
   return (
-    <div className="landing-root">
-      <header className="landing-header glass fade-in-up">
-        <div className="landing-header-left">
-          <div className="logo-circle">💧</div>
-          <span className="brand">Ground Water Companion</span>
+    <div className="min-h-screen flex flex-col">
+      <header className="m-4 p-3 rounded-xl bg-gradient-card backdrop-blur-sm border border-dark-border shadow-glass animate-float-up">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-secondary-300/35 to-accent-300/35 flex items-center justify-center">
+              💧
+            </div>
+            <span className="font-bold text-dark-text-primary">Ground Water Companion</span>
+          </div>
+          <nav className="flex gap-2">
+            <Link to="/" className="px-3 py-1.5 rounded-lg hover:bg-secondary-300/18 transition-colors">Home</Link>
+            <Link to="/resources" className="px-3 py-1.5 rounded-lg hover:bg-secondary-300/18 transition-colors">Resources</Link>
+          </nav>
         </div>
-        <nav className="landing-nav">
-          <Link to="/">Home</Link>
-          <Link to="/resources">Resources</Link>
-        </nav>
       </header>
 
-      <section className="res-hero hero-content-split" id="in-your-community">
-        <div className="res-hero-innerac">
-          <h1>Protecting Groundwater in Community</h1>
-         
+      <section className="bg-gradient-to-br from-secondary-300/85 to-secondary-400/75 py-12 px-4" id="in-your-community">
+        <div className="w-full max-w-7xl mx-auto text-white">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight">Protecting Groundwater in Community</h1>
         </div>
       </section>
 
-      <main className="res-content">
-        <section className="community-main-content">
-          <div className="community-intro-split">
-            <div className="community-intro-text">
-              <p>Groundwater is a primary source of water for communities all over the world. These communities rely on groundwater as water for drinking and other domestic uses, agriculture, industry, and more.</p>
-              <p>A clean, sustainable groundwater supply is essential for communities to grow and thrive, making groundwater protection of utmost importance.</p>
-              <p>There are many ways your community can help protect its groundwater supply. Get yourself and your community involved as part of the solution to preserving this vital resource!</p>
+      <main className="flex-1 px-4 pb-6">
+        <section className="w-full max-w-7xl mx-auto my-6">
+          <div className="flex flex-col lg:flex-row items-center gap-8 mb-8">
+            <div className="flex-1 space-y-4 text-dark-text-primary">
+              <p className="text-lg leading-relaxed">
+                Groundwater is a primary source of water for communities all over the world. These communities rely on groundwater as water for drinking and other domestic uses, agriculture, industry, and more.
+              </p>
+              <p className="text-lg leading-relaxed">
+                A clean, sustainable groundwater supply is essential for communities to grow and thrive, making groundwater protection of utmost importance.
+              </p>
+              <p className="text-lg leading-relaxed">
+                There are many ways your community can help protect its groundwater supply. Get yourself and your community involved as part of the solution to preserving this vital resource!
+              </p>
             </div>
-            <div className="community-intro-image">
-              <img src={ProtectGW} alt="Community Groundwater" />
+            <div className="flex-shrink-0 w-full lg:max-w-md">
+              <img 
+                src={ProtectGW} 
+                alt="Community Groundwater" 
+                className="w-full h-auto rounded-xl border border-secondary-300/25 shadow-xl"
+              />
             </div>
           </div>
           <div className="community-accordion-container">

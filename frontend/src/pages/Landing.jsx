@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { auth, db, provider } from '../firebase'
 import { signInWithPopup } from 'firebase/auth'
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
+import '../index.css'
 
 function Landing() {
   const navigate = useNavigate()
   const [testimonialIndex, setTestimonialIndex] = useState(0)
   const [openFaq, setOpenFaq] = useState(null)
+  const [visibleElements, setVisibleElements] = useState(new Set())
+  const elementRefs = useRef({})
 
   async function handleGoogleSignIn() {
     try {
@@ -51,204 +54,793 @@ function Landing() {
     return () => clearInterval(id)
   }, [])
 
+  // Scroll animation effect
+  useEffect(() => {
+    const observerOptions = {
+      threshold: 0.1,
+      rootMargin: '0px 0px -50px 0px'
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setVisibleElements(prev => new Set([...prev, entry.target.id]))
+        }
+      })
+    }, observerOptions)
+
+    // Observe all elements with data-animate attribute
+    const animateElements = document.querySelectorAll('[data-animate]')
+    animateElements.forEach((el) => {
+      observer.observe(el)
+    })
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [])
+
   return (
-    <div className="landing-root">
+      <div style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        backgroundColor: 'white',
+        fontFamily: '"Lato", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      }}>
+
       {/* Header */}
-      <header className="landing-header glass fade-in-up">
-        <div className="landing-header-left">
-          <div className="logo-circle">💧</div>
-          <span className="brand">Ground Water Companion</span>
+      <header style={{
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        color: '#333',
+        padding: '0.5rem 1rem',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
+        borderBottom: '1px solid rgba(229, 231, 235, 0.3)'
+      }}>
+        <div style={{ 
+          margin: '0',
+          paddingLeft: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem'
+        }}>
+          {/* Logo */}
+          <div style={{ 
+            flexShrink: 0,
+            backgroundColor: '#1e3a8a',
+            padding: '0.25rem',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '45px',
+            height: '45px'
+          }}>
+            <img 
+              src="/logo1.png" 
+              alt="Central Ground Water Board Logo" 
+              style={{
+                height: '30px',
+                width: 'auto',
+                objectFit: 'contain'
+              }}
+            />
+          </div>
+          
+          {/* Text Content */}
+          <div style={{ textAlign: 'left' }}>
+            <h1 style={{ 
+              fontSize: '0.95rem',
+              fontWeight: 'bold',
+              margin: '0 0 0.125rem 0',
+              color: '#333',
+              letterSpacing: '0.1px'
+            }}>
+              Central Ground Water Board
+            </h1>
+            <p style={{ 
+              fontSize: '0.65rem',
+              margin: '0 0 0.0625rem 0',
+              color: '#666',
+              fontWeight: '500'
+            }}>
+              Department of WR, RD & GR
+            </p>
+            <p style={{ 
+              fontSize: '0.55rem',
+              margin: '0',
+              color: '#888',
+              fontWeight: '400'
+            }}>
+              Ministry of Jal Shakti, Government of India
+            </p>
+          </div>
         </div>
-        <nav className="landing-nav">
-          <Link to="/">Home</Link>
-          <a href="#features">Features</a>
-          <button onClick={handleGoogleSignIn}>Login</button>
-          <button onClick={handleGoogleSignIn}>Sign up</button>
-        </nav>
       </header>
 
       {/* Hero */}
-      <section className="landing-hero">
-        <div className="hero-grid glass fade-in-up" style={{
-          background: 'var(--gradient-surface)',
-          border: '1px solid var(--color-border)',
-          boxShadow: 'var(--shadow-2xl)',
-          borderRadius: 24
+      <section style={{
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '2rem 1rem',
+        marginTop: '80px'
+      }}>
+        <div style={{
+          width: '100%',
+          maxWidth: window.innerWidth > 1200 ? '1200px' : window.innerWidth > 768 ? '1000px' : '95%',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+          padding: window.innerWidth > 1024 ? '4rem 4rem' : window.innerWidth > 768 ? '3.5rem 3rem' : '3rem 2rem',
+          backgroundImage: 'url("/bg.png")',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          border: '1px solid #e5e7eb',
+          borderRadius: window.innerWidth > 768 ? '32px' : '24px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.1)',
+          animation: 'floatUp 0.6s ease-out',
+          position: 'relative',
+          minHeight: window.innerWidth > 1024 ? '450px' : window.innerWidth > 768 ? '400px' : '350px'
         }}>
-          <div className="hero-copy">
-            <h1 className="landing-title">Smarter Groundwater Insights</h1>
-            <p className="landing-sub">Ask questions, analyze datasets, and get guidance for groundwater estimation.</p>
-            <div className="hero-ctas">
-              <button onClick={handleGoogleSignIn} className="btn-primary">Sign in with Google</button>
-              <Link to="/demo" className="btn-secondary" style={{
-                marginLeft: '1rem',
-                padding: '0.75rem 1.5rem',
-                background: 'var(--color-surface)',
-                color: 'var(--color-text-primary)',
-                border: '2px solid var(--color-primary)',
-                borderRadius: '8px',
-                textDecoration: 'none',
-                fontWeight: '600',
-                transition: 'all 0.2s ease',
-                display: 'inline-block'
+          {/* Background overlay for better text readability */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.4)',
+            borderRadius: window.innerWidth > 768 ? '32px' : '24px',
+            zIndex: 1
+          }}></div>
+          <h1 style={{
+            fontSize: window.innerWidth > 1200 ? '4.5rem' : window.innerWidth > 1024 ? '4rem' : window.innerWidth > 768 ? '3.5rem' : window.innerWidth > 640 ? '3rem' : '2.5rem',
+            fontWeight: 'bold',
+            color: 'white',
+            lineHeight: 1.1,
+            margin: '0 0 1.5rem 0',
+            position: 'relative',
+            zIndex: 2,
+            textShadow: '2px 2px 4px rgba(0, 0, 0, 0.7)'
+          }}>
+            Ground Water Companion
+          </h1>
+          <p style={{
+            fontSize: window.innerWidth > 1200 ? '1.5rem' : window.innerWidth > 1024 ? '1.375rem' : window.innerWidth > 768 ? '1.25rem' : window.innerWidth > 640 ? '1.125rem' : '1rem',
+            color: 'white',
+            lineHeight: 1.5,
+            margin: '0 0 2.5rem 0',
+            maxWidth: window.innerWidth > 768 ? '900px' : '700px',
+            position: 'relative',
+            zIndex: 2,
+            textShadow: '1px 1px 3px rgba(0, 0, 0, 0.7)'
+          }}>
+            Your intelligent assistant for groundwater estimation, analysis, and conservation. Get instant insights, expert guidance, and actionable recommendations.
+          </p>
+          <button 
+            onClick={handleGoogleSignIn} 
+            style={{
+              padding: '16px 40px',
+              backgroundColor: '#0ea5e9',
+              fontWeight: '600',
+              borderRadius: '50px',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              transition: 'all 0.3s ease',
+              boxShadow: '0 4px 15px 0 rgba(14, 165, 233, 0.3)',
+              position: 'relative',
+              zIndex: 2,
+              color: '#1e40af',
+              fontFamily: 'sans-serif',
+              letterSpacing: '0.5px'
+            }}
+            onMouseOver={(e) => {
+              e.target.style.backgroundColor = '#38bdf8';
+              e.target.style.transform = 'translateY(-2px)';
+              e.target.style.boxShadow = '0 6px 20px 0 rgba(14, 165, 233, 0.4)';
+            }}
+            onMouseOut={(e) => {
+              e.target.style.backgroundColor = '#0ea5e9';
+              e.target.style.transform = 'translateY(0)';
+              e.target.style.boxShadow = '0 4px 15px 0 rgba(14, 165, 233, 0.3)';
+            }}
+          >
+            Sign in with Google
+          </button>
+        </div>
+      </section>
+
+      {/* About Section */}
+      <section style={{
+        padding: '6rem 2rem',
+        backgroundColor: 'white',
+        position: 'relative'
+      }}>
+        
+        <div style={{
+          maxWidth: '1200px',
+          margin: '0 auto',
+          position: 'relative',
+          zIndex: 2
+        }}>
+          {/* Header */}
+          <div 
+            className={`animate-fade-in-up ${visibleElements.has('about-header') ? 'visible' : ''}`}
+            id="about-header"
+            data-animate
+            style={{ textAlign: 'center', marginBottom: '4rem' }}
+          >
+            <h2 style={{
+              fontSize: '3rem',
+              fontWeight: 'bold',
+              color: '#0ea5e9',
+              margin: '0 0 1rem 0',
+              lineHeight: 1.1
+            }}>
+              About INGRES Platform
+            </h2>
+            <div style={{
+              width: '80px',
+              height: '4px',
+              backgroundColor: '#0ea5e9',
+              margin: '0 auto',
+              borderRadius: '2px'
+            }}></div>
+          </div>
+          
+          {/* Main Content */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '2rem'
+          }}>
+            {/* INGRES Platform Card */}
+            <div 
+              className={`animate-fade-in-up ${visibleElements.has('ingres-card') ? 'visible' : ''}`}
+              id="ingres-card"
+              data-animate
+              style={{
+                background: 'white',
+                borderRadius: '20px',
+                padding: '3rem',
+                boxShadow: '0 10px 30px rgba(14, 165, 233, 0.1)',
+                border: '2px solid #e0f2fe',
+                transform: 'translateY(0)',
+                transition: 'all 0.3s ease'
               }}
               onMouseOver={(e) => {
-                e.target.style.background = 'var(--color-primary)'
-                e.target.style.color = 'white'
+                e.target.style.transform = 'translateY(-10px)';
+                e.target.style.boxShadow = '0 20px 40px rgba(14, 165, 233, 0.2)';
+                e.target.style.borderColor = '#0ea5e9';
               }}
               onMouseOut={(e) => {
-                e.target.style.background = 'var(--color-surface)'
-                e.target.style.color = 'var(--color-text-primary)'
+                e.target.style.transform = 'translateY(0)';
+                e.target.style.boxShadow = '0 10px 30px rgba(14, 165, 233, 0.1)';
+                e.target.style.borderColor = '#e0f2fe';
               }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '2rem' }}>
+                <div style={{
+                  width: '60px',
+                  height: '60px',
+                  background: 'linear-gradient(135deg, #0ea5e9, #1e40af)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: '1.5rem',
+                  fontSize: '1.5rem'
+                }}>
+                  🌐
+                </div>
+                <div>
+                  <h3 style={{
+                    fontSize: '2rem',
+                    fontWeight: 'bold',
+                    color: '#1e293b',
+                    margin: '0 0 0.5rem 0'
+                  }}>
+                    INGRES GIS Platform
+                  </h3>
+                  <p style={{
+                    fontSize: '1rem',
+                    color: '#64748b',
+                    margin: '0'
+                  }}>
+                    Indian Groundwater Resource Estimation System
+                  </p>
+                </div>
+              </div>
+              
+              <p style={{
+                fontSize: '1.125rem',
+                color: '#475569',
+                lineHeight: 1.7,
+                margin: '0 0 2rem 0'
+              }}>
+                The INGRES platform provides comprehensive groundwater data visualization and analysis tools. 
+                Our chatbot integrates with this powerful system to deliver real-time insights and accurate 
+                groundwater estimations across India.
+              </p>
+              
+              <a 
+                href="https://ingres.iith.ac.in/gecdataonline/gis/INDIA;parentLocName=INDIA;locname=INDIA;loctype=COUNTRY;view=ADMIN;locuuid=ffce954d-24e1-494b-ba7e-0931d8ad6085;year=2024-2025;computationType=normal;component=recharge;period=annual;category=safe;mapOnClickParams=false"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  padding: '1rem 2rem',
+                  background: 'linear-gradient(135deg, #0ea5e9, #1e40af)',
+                  color: 'white',
+                  textDecoration: 'none',
+                  borderRadius: '50px',
+                  fontWeight: '600',
+                  fontSize: '1rem',
+                  transition: 'all 0.3s ease',
+                  boxShadow: '0 4px 15px rgba(14, 165, 233, 0.4)'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.transform = 'translateY(-2px)';
+                  e.target.style.boxShadow = '0 8px 25px rgba(14, 165, 233, 0.6)';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 4px 15px rgba(14, 165, 233, 0.4)';
+                }}
               >
-                🎯 Try Demo
-              </Link>
+                Explore INGRES Platform
+                <span style={{ fontSize: '1.2rem' }}>→</span>
+              </a>
             </div>
-            <div className="hero-stats">
-              <div className="stat" style={{
-                background: 'var(--gradient-primary)',
-                color: 'white',
-                border: 'none',
-                boxShadow: 'var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.2)',
-                borderRadius: 16
-              }}>
-                <div className="stat-value">10k+</div>
-                <div className="stat-label">Queries answered</div>
+
+            {/* AI Features Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+              gap: '2rem'
+            }}>
+              <div 
+                className={`animate-fade-in-left ${visibleElements.has('feature-1') ? 'visible' : ''}`}
+                id="feature-1"
+                data-animate
+                style={{
+                  background: 'white',
+                  borderRadius: '16px',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  border: '2px solid #e0f2fe',
+                  transition: 'all 0.3s ease',
+                  boxShadow: '0 4px 15px rgba(14, 165, 233, 0.1)'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.transform = 'translateY(-5px)';
+                  e.target.style.borderColor = '#0ea5e9';
+                  e.target.style.boxShadow = '0 8px 25px rgba(14, 165, 233, 0.15)';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.borderColor = '#e0f2fe';
+                  e.target.style.boxShadow = '0 4px 15px rgba(14, 165, 233, 0.1)';
+                }}
+              >
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 1rem',
+                  fontSize: '1.5rem'
+                }}>
+                  🤖
+                </div>
+                <h4 style={{
+                  fontSize: '1.25rem',
+                  fontWeight: 'bold',
+                  color: '#1e293b',
+                  margin: '0 0 1rem 0'
+                }}>
+                  AI-Powered Analysis
+                </h4>
+                <p style={{
+                  fontSize: '0.95rem',
+                  color: '#64748b',
+                  lineHeight: 1.6,
+                  margin: '0'
+                }}>
+                  Advanced algorithms provide instant groundwater estimations and expert-level insights.
+                </p>
               </div>
-              <div className="stat" style={{
-                background: 'var(--gradient-secondary)',
-                color: 'white',
-                border: 'none',
-                boxShadow: 'var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.2)',
-                borderRadius: 16
-              }}>
-                <div className="stat-value">99.9%</div>
-                <div className="stat-label">Uptime</div>
+
+              <div 
+                className={`animate-fade-in-up ${visibleElements.has('feature-2') ? 'visible' : ''}`}
+                id="feature-2"
+                data-animate
+                style={{
+                  background: 'white',
+                  borderRadius: '16px',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  border: '2px solid #e0f2fe',
+                  transition: 'all 0.3s ease',
+                  boxShadow: '0 4px 15px rgba(14, 165, 233, 0.1)'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.transform = 'translateY(-5px)';
+                  e.target.style.borderColor = '#0ea5e9';
+                  e.target.style.boxShadow = '0 8px 25px rgba(14, 165, 233, 0.15)';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.borderColor = '#e0f2fe';
+                  e.target.style.boxShadow = '0 4px 15px rgba(14, 165, 233, 0.1)';
+                }}
+              >
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 1rem',
+                  fontSize: '1.5rem'
+                }}>
+                  📊
+                </div>
+                <h4 style={{
+                  fontSize: '1.25rem',
+                  fontWeight: 'bold',
+                  color: '#1e293b',
+                  margin: '0 0 1rem 0'
+                }}>
+                  Real-time Data
+                </h4>
+                <p style={{
+                  fontSize: '0.95rem',
+                  color: '#64748b',
+                  lineHeight: 1.6,
+                  margin: '0'
+                }}>
+                  Access live groundwater data and comprehensive resource estimation across India.
+                </p>
               </div>
-              <div className="stat" style={{
-                background: 'var(--gradient-accent)',
-                color: 'white',
-                border: 'none',
-                boxShadow: 'var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.2)',
-                borderRadius: 16
-              }}>
-                <div className="stat-value">AI</div>
-                <div className="stat-label">Powered analysis</div>
+
+              <div 
+                className={`animate-fade-in-right ${visibleElements.has('feature-3') ? 'visible' : ''}`}
+                id="feature-3"
+                data-animate
+                style={{
+                  background: 'white',
+                  borderRadius: '16px',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  border: '2px solid #e0f2fe',
+                  transition: 'all 0.3s ease',
+                  boxShadow: '0 4px 15px rgba(14, 165, 233, 0.1)'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.transform = 'translateY(-5px)';
+                  e.target.style.borderColor = '#0ea5e9';
+                  e.target.style.boxShadow = '0 8px 25px rgba(14, 165, 233, 0.15)';
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.borderColor = '#e0f2fe';
+                  e.target.style.boxShadow = '0 4px 15px rgba(14, 165, 233, 0.1)';
+                }}
+              >
+                <div style={{
+                  width: '50px',
+                  height: '50px',
+                  background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 1rem',
+                  fontSize: '1.5rem'
+                }}>
+                  🏛️
+                </div>
+                <h4 style={{
+                  fontSize: '1.25rem',
+                  fontWeight: 'bold',
+                  color: '#1e293b',
+                  margin: '0 0 1rem 0'
+                }}>
+                  Official CGWB Data
+                </h4>
+                <p style={{
+                  fontSize: '0.95rem',
+                  color: '#64748b',
+                  lineHeight: 1.6,
+                  margin: '0'
+                }}>
+                  Powered by official Central Ground Water Board data and IIT Hyderabad research.
+                </p>
               </div>
             </div>
-          </div>
-          <div className="hero-visual float-y">
-            <img alt="Groundwater illustration" className="hero-img" src="https://images.unsplash.com/photo-1644368846443-f7560dde6222?q=80&w=1170&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" />
-          </div>
-        </div>
-      </section>
-
-      {/* Overview / About */}
-      <section className="landing-about glass">
-        <div className="about-grid">
-          <div className="about-card about-ingres">
-            <h2 style={{ marginTop: 0 }}>About INGRES</h2>
-            <p>
-              The Assessment of Dynamic Ground Water Resources of India is conducted annually by CGWB and State/UT Ground Water Departments under the coordination of CLEG, DoWR, RD & GR, MoJS. Using the GIS-based web app INGRES (developed by CGWB and IIT Hyderabad), the process estimates annual recharge, extractable resources, total extraction, and stage of extraction for each assessment unit. Units are categorized as Safe, Semi-Critical, Critical, or Over-Exploited.
-            </p>
-            <p>
-              Explore the official portal: <a href="https://ingres.iith.ac.in/home" target="_blank" rel="noreferrer">ingres.iith.ac.in</a>
-            </p>
-            <p>
-              Assessments are computed at the Block/Mandal/Taluk level and aggregated for districts and states, forming the scientific basis for groundwater planning, regulation, and conservation.
-            </p>
-            <h4 style={{ marginBottom: '0.5rem' }}>Key outputs</h4>
-            <ul>
-              <li>Annual groundwater recharge</li>
-              <li>Extractable groundwater resources</li>
-              <li>Total groundwater extraction</li>
-              <li>Stage of groundwater extraction (Safe → Over-Exploited)</li>
-            </ul>
-          </div>
-          <div className="about-card about-points">
-            <h3 style={{ marginTop: 0 }}>Why an AI Chatbot?</h3>
-            <ul>
-              <li>🤖 Intelligent query handling for groundwater datasets</li>
-              <li>⏱️ Real-time access to current and historical assessments</li>
-              <li>📈 Interactive diagrams and visualizations</li>
-              <li>🗣️ Multilingual support for Indian regional languages</li>
-              <li>🔗 Seamless integration with the INGRES dataset</li>
-            </ul>
-            <h3>Impact</h3>
-            <ul>
-              <li>🧭 Easier retrieval of vast datasets for all users</li>
-              <li>🧠 Informed decision-making for planners and policymakers</li>
-              <li>📚 Better accessibility for researchers and the public</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* Segments (inspired by reference) */}
-      <section className="landing-segments">
-        <div className="segments-grid">
-          <div className="segment fade-in-up">
-            <div className="segment-icon-circle">
-              <span aria-hidden>💧</span>
-            </div>
-            <h3 className="segment-title">About Groundwater</h3>
-            <p className="segment-desc">We all rely on groundwater in some way. Get concise, friendly explanations and key facts that align with INGRES outputs.</p>
-            <button type="button" className="btn-primary" onClick={() => navigate('/groundwater')}>Learn more</button>
-          </div>
-          <div className="segment fade-in-up" style={{ animationDelay: '120ms' }}>
-            <div className="segment-icon-circle">
-              <span aria-hidden>🎓</span>
-            </div>
-            <h3 className="segment-title">For Students & Educators</h3>
-            <p className="segment-desc">Discover ready-to-use prompts, examples, and visuals to bring groundwater estimation concepts to life.</p>
-            <button type="button" onClick={() => navigate('/resources')} className="segment-btn-solid">Activities and more</button>
-          </div>
-        </div>
-      </section>
-
-      {/* Removed features cards as requested */}
-
-      {/* How it works */}
-      <section id="features" className="landing-how glass">
-        <h2>How it works</h2>
-        <div className="how-steps">
-          <div className="how-step">
-            <img alt="Sign up" src="https://www.shutterstock.com/image-illustration/linear-simple-black-sign-button-260nw-1791428420.jpg" />
-            <h4>1. Sign in</h4>
-            <p>Use your Google account to get started in seconds.</p>
-          </div>
-          <div className="how-step">
-            <img alt="Ask" src="https://www.shutterstock.com/image-vector/chatbotchat-ai-digital-chat-bot-600nw-2277764989.jpg" />
-            <h4>2. Ask</h4>
-            <p>Type your groundwater questions and reference your datasets.</p>
-          </div>
-          <div className="how-step">
-            <img alt="Act" src="https://www.shutterstock.com/image-photo/advertising-product-photo-want-create-600nw-2592005549.jpg" />
-            <h4>3. Act</h4>
-            <p>ChatBOT provides concise answers and insights to make decisions quickly.</p>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="landing-footer glass">
-        <div className="footer-left">
-          <div className="logo-circle small">💧</div>
-          <span className="brand small">Ground Water Companion</span>
+      <footer 
+        className={`animate-fade-in-up ${visibleElements.has('footer') ? 'visible' : ''}`}
+        id="footer"
+        data-animate
+        style={{
+          backgroundColor: 'white',
+          color: '#333',
+          padding: '2rem 1.5rem',
+          boxShadow: '0 -2px 10px rgba(0, 0, 0, 0.1)',
+          borderTop: '2px solid #e0f2fe'
+        }}
+      >
+        <div style={{ 
+          maxWidth: '1200px', 
+          margin: '0 auto',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '2rem',
+          alignItems: 'flex-start'
+        }}>
+          {/* Left Side - Logo and Title */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            minWidth: '300px',
+            flex: '1'
+          }}>
+            {/* Logo */}
+            <div style={{
+              backgroundColor: '#1e3a8a',
+              padding: '0.5rem',
+              borderRadius: '50%',
+              width: '50px',
+              height: '50px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <img
+                src="/logo1.png"
+                alt="Central Ground Water Board Logo"
+                style={{
+                  height: '30px',
+                  width: 'auto',
+                  objectFit: 'contain'
+                }}
+              />
+            </div>
+
+            {/* Title */}
+            <div style={{ flex: 1 }}>
+              <h2 style={{ 
+                fontSize: window.innerWidth > 768 ? '1.25rem' : '1rem',
+                fontWeight: 'bold',
+                margin: '0 0 0.25rem 0',
+                color: '#0ea5e9'
+              }}>
+                Central Ground Water Board
+              </h2>
+              <p style={{ 
+                fontSize: window.innerWidth > 768 ? '0.875rem' : '0.75rem',
+                margin: '0 0 0.125rem 0',
+                color: '#666'
+              }}>
+                Department of WR, RD & GR
+              </p>
+              <p style={{ 
+                fontSize: window.innerWidth > 768 ? '0.75rem' : '0.65rem',
+                margin: '0',
+                color: '#888'
+              }}>
+                Ministry of Jal Shakti, Government of India
+              </p>
+            </div>
+          </div>
+
+          {/* Middle - Contributors */}
+          <div style={{
+            minWidth: '250px',
+            flex: '1',
+            textAlign: 'center'
+          }}>
+            <h3 style={{
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              color: '#0ea5e9',
+              margin: '0 0 1rem 0'
+            }}>
+              Development Team
+            </h3>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.25rem'
+            }}>
+              <p style={{
+                fontSize: '0.875rem',
+                margin: '0',
+                color: '#333',
+                fontWeight: '500'
+              }}>
+                Shravya H Jain
+              </p>
+              <p style={{
+                fontSize: '0.875rem',
+                margin: '0',
+                color: '#333',
+                fontWeight: '500'
+              }}>
+                Srishyla Kumar TP
+              </p>
+              <p style={{
+                fontSize: '0.875rem',
+                margin: '0',
+                color: '#333',
+                fontWeight: '500'
+              }}>
+                Rakshita RL
+              </p>
+              <p style={{
+                fontSize: '0.875rem',
+                margin: '0',
+                color: '#333',
+                fontWeight: '500'
+              }}>
+                Shreesha S Shetty
+              </p>
+              <p style={{
+                fontSize: '0.875rem',
+                margin: '0',
+                color: '#333',
+                fontWeight: '500'
+              }}>
+                Mayuri J Shetty
+              </p>
+              <p style={{
+                fontSize: '0.875rem',
+                margin: '0',
+                color: '#333',
+                fontWeight: '500'
+              }}>
+                Mohan R
+              </p>
+            </div>
+          </div>
+
+          {/* Right Side - Contact Us */}
+          <div style={{
+            minWidth: '200px',
+            flex: '1',
+            textAlign: 'right'
+          }}>
+            <h3 style={{
+              fontSize: '1rem',
+              fontWeight: 'bold',
+              color: '#0ea5e9',
+              margin: '0 0 1rem 0'
+            }}>
+              Contact Us
+            </h3>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem'
+            }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.5rem'
+              }}>
+                <span style={{ fontSize: '1rem' }}>📧</span>
+                <a 
+                  href="mailto:info@cgwb.gov.in" 
+                  style={{
+                    fontSize: '0.875rem',
+                    color: '#333',
+                    textDecoration: 'none'
+                  }}
+                  onMouseOver={(e) => e.target.style.color = '#0ea5e9'}
+                  onMouseOut={(e) => e.target.style.color = '#333'}
+                >
+                  info@cgwb.gov.in
+                </a>
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.5rem'
+              }}>
+                <span style={{ fontSize: '1rem' }}>🌐</span>
+                <a 
+                  href="https://cgwb.gov.in" 
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: '0.875rem',
+                    color: '#333',
+                    textDecoration: 'none'
+                  }}
+                  onMouseOver={(e) => e.target.style.color = '#0ea5e9'}
+                  onMouseOut={(e) => e.target.style.color = '#333'}
+                >
+                  cgwb.gov.in
+                </a>
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.5rem'
+              }}>
+                <span style={{ fontSize: '1rem' }}>📍</span>
+                <span style={{
+                  fontSize: '0.875rem',
+                  color: '#666'
+                }}>
+                  New Delhi, India
+                </span>
+              </div>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.5rem'
+              }}>
+                <span style={{ fontSize: '1rem' }}>☎️</span>
+                <span style={{
+                  fontSize: '0.875rem',
+                  color: '#666'
+                }}>
+                  +91-11-2616 5277
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="footer-right">
-          <Link to="/chat">Get started</Link>
-          <a href="#features">Features</a>
-          <a href="mailto:support@example.com">Support</a>
+
+        {/* Bottom Border */}
+        <div style={{
+          marginTop: '1.5rem',
+          paddingTop: '1rem',
+          borderTop: '1px solid #e0f2fe',
+          textAlign: 'center'
+        }}>
+          <p style={{
+            fontSize: '0.75rem',
+            color: '#888',
+            margin: '0'
+          }}>
+            © 2024 Central Ground Water Board. All rights reserved.
+          </p>
         </div>
       </footer>
 
-      {/* Floating Chatbot Button (frontend only) */}
-      <button type="button" className="fab-chat" aria-label="Open chatbot">
-        <svg className="fab-icon" width="28" height="28" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden>
-          <path fill="white" d="M4 6.75C4 4.679 5.679 3 7.75 3h8.5C18.321 3 20 4.679 20 6.75v5.5A3.75 3.75 0 0 1 16.25 16H11l-3.75 3v-3H7.75A3.75 3.75 0 0 1 4 12.25v-5.5Zm4.25 2a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm3.75 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Zm3.75 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z"/>
-        </svg>
-      </button>
     </div>
   )
 }
