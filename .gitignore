@@ -174,3 +174,4 @@ temp_*.py
 *.pyc
 *.pyo
 *.pyd
+DS_Store
