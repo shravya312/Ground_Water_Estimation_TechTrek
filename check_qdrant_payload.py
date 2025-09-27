@@ -3,7 +3,7 @@
 Check the actual Qdrant payload structure
 """
 
-import main
+import main2
 
 def check_qdrant_payload():
     """Check the actual payload structure in Qdrant."""
@@ -11,10 +11,10 @@ def check_qdrant_payload():
     print("=" * 50)
     
     # Initialize components
-    main._init_components()
+    main2._init_components()
     
     # Get sample data
-    results = main._qdrant_client.scroll(
+    results = main2._qdrant_client.scroll(
         collection_name='groundwater_excel_collection', 
         limit=5, 
         with_payload=True
@@ -56,7 +56,7 @@ def check_qdrant_payload():
     
     # Check for Karnataka in all data
     print(f"\n🔍 Searching for Karnataka in all data...")
-    all_results = main._qdrant_client.scroll(
+    all_results = main2._qdrant_client.scroll(
         collection_name='groundwater_excel_collection', 
         limit=1000, 
         with_payload=True

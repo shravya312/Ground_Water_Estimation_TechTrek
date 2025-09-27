@@ -3,7 +3,7 @@
 Simple script to upload master CSV data using existing main.py functions
 """
 
-import main
+import main2
 import pandas as pd
 
 def upload_master_csv_simple():
@@ -12,12 +12,12 @@ def upload_master_csv_simple():
     print("=" * 60)
     
     # Initialize components
-    main._init_components()
+    main2._init_components()
     
     # Clear existing collection
     print("🗑️ Clearing existing collection...")
     try:
-        main._qdrant_client.delete_collection("groundwater_excel_collection")
+        main2._qdrant_client.delete_collection("groundwater_excel_collection")
         print("✅ Collection deleted")
     except:
         print("ℹ️ Collection doesn't exist or already deleted")
@@ -25,7 +25,7 @@ def upload_master_csv_simple():
     # Create new collection
     print("🆕 Creating new collection...")
     from qdrant_client.http.models import Distance, VectorParams
-    main._qdrant_client.create_collection(
+    main2._qdrant_client.create_collection(
         collection_name="groundwater_excel_collection",
         vectors_config=VectorParams(
             size=768,
@@ -81,7 +81,7 @@ def upload_master_csv_simple():
         
         try:
             # Use the existing upload function from main.py
-            main.upload_dataframe_to_qdrant(batch_df, main._model, main._qdrant_client)
+            main2.upload_dataframe_to_qdrant(batch_df, main2._model, main2._qdrant_client)
             uploaded += len(batch_df)
             print(f"   📤 Batch {i//batch_size + 1}/{(len(df) + batch_size - 1)//batch_size}: {len(batch_df)} records uploaded")
         except Exception as e:
@@ -90,7 +90,7 @@ def upload_master_csv_simple():
     
     # Verify upload
     print("\n🔄 Verifying upload...")
-    collection_info = main._qdrant_client.get_collection("groundwater_excel_collection")
+    collection_info = main2._qdrant_client.get_collection("groundwater_excel_collection")
     print(f"✅ Total points in collection: {collection_info.points_count}")
     
     print("\n🎉 Master CSV upload completed!")

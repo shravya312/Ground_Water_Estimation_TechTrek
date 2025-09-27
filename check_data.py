@@ -3,7 +3,7 @@
 Check what data is in the Qdrant collection
 """
 
-import main
+import main2
 
 def check_collection_data():
     """Check what data is available in the collection."""
@@ -11,16 +11,16 @@ def check_collection_data():
     print("=" * 50)
     
     # Initialize components
-    main._init_components()
+    main2._init_components()
     
     # Get sample data
-    results = main._qdrant_client.scroll(
+    results = main2._qdrant_client.scroll(
         collection_name='groundwater_excel_collection', 
         limit=20, 
         with_payload=True
     )
     
-    print(f"📊 Total points in collection: {main._qdrant_client.get_collection('groundwater_excel_collection').points_count}")
+    print(f"📊 Total points in collection: {main2._qdrant_client.get_collection('groundwater_excel_collection').points_count}")
     print("\n📋 Sample Records:")
     print("-" * 50)
     
