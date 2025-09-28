@@ -9,6 +9,8 @@ const LocationMap = ({ location, onLocationChange, isGettingLocation }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState(null)
   const [clickedLocation, setClickedLocation] = useState(null)
+  const [hoveredState, setHoveredState] = useState(null)
+  const [statePolygons, setStatePolygons] = useState([])
 
   // Initialize Google Map
   useEffect(() => {
@@ -59,6 +61,203 @@ const LocationMap = ({ location, onLocationChange, isGettingLocation }) => {
 
     return () => clearTimeout(timeout)
   }, [mapLoaded, mapError])
+
+  // Add state boundaries with hover highlighting for specific states only
+  const addStateBoundaries = (map) => {
+    // Only highlight specific states with groundwater data
+    const highlightedStates = [
+      {
+        name: 'Maharashtra',
+        coords: [
+          { lat: 19.7515, lng: 72.3954 },
+          { lat: 19.7515, lng: 80.8889 },
+          { lat: 15.6021, lng: 80.8889 },
+          { lat: 15.6021, lng: 72.3954 },
+          { lat: 19.7515, lng: 72.3954 }
+        ],
+        center: { lat: 19.7515, lng: 76.6421 },
+        highlight: true
+      },
+      {
+        name: 'Karnataka',
+        coords: [
+          { lat: 18.1124, lng: 74.1240 },
+          { lat: 18.1124, lng: 78.5704 },
+          { lat: 11.6705, lng: 78.5704 },
+          { lat: 11.6705, lng: 74.1240 },
+          { lat: 18.1124, lng: 74.1240 }
+        ],
+        center: { lat: 15.3173, lng: 75.7139 },
+        highlight: true
+      },
+      {
+        name: 'Tamil Nadu',
+        coords: [
+          { lat: 13.0839, lng: 76.5704 },
+          { lat: 13.0839, lng: 80.8889 },
+          { lat: 8.0883, lng: 80.8889 },
+          { lat: 8.0883, lng: 76.5704 },
+          { lat: 13.0839, lng: 76.5704 }
+        ],
+        center: { lat: 11.1271, lng: 78.6569 },
+        highlight: true
+      },
+      {
+        name: 'Gujarat',
+        coords: [
+          { lat: 24.7136, lng: 68.1801 },
+          { lat: 24.7136, lng: 74.1240 },
+          { lat: 20.4283, lng: 74.1240 },
+          { lat: 20.4283, lng: 68.1801 },
+          { lat: 24.7136, lng: 68.1801 }
+        ],
+        center: { lat: 23.0225, lng: 72.5714 },
+        highlight: true
+      },
+      {
+        name: 'Rajasthan',
+        coords: [
+          { lat: 30.0479, lng: 69.1960 },
+          { lat: 30.0479, lng: 78.5704 },
+          { lat: 23.0225, lng: 78.5704 },
+          { lat: 23.0225, lng: 69.1960 },
+          { lat: 30.0479, lng: 69.1960 }
+        ],
+        center: { lat: 27.0238, lng: 74.2179 },
+        highlight: true
+      },
+      {
+        name: 'Uttar Pradesh',
+        coords: [
+          { lat: 30.0479, lng: 77.5704 },
+          { lat: 30.0479, lng: 84.1240 },
+          { lat: 23.0225, lng: 84.1240 },
+          { lat: 23.0225, lng: 77.5704 },
+          { lat: 30.0479, lng: 77.5704 }
+        ],
+        center: { lat: 26.8467, lng: 80.9462 },
+        highlight: false
+      },
+      {
+        name: 'Madhya Pradesh',
+        coords: [
+          { lat: 26.8467, lng: 74.1240 },
+          { lat: 26.8467, lng: 82.1240 },
+          { lat: 21.1240, lng: 82.1240 },
+          { lat: 21.1240, lng: 74.1240 },
+          { lat: 26.8467, lng: 74.1240 }
+        ],
+        center: { lat: 22.9734, lng: 78.6569 },
+        highlight: false
+      },
+      {
+        name: 'West Bengal',
+        coords: [
+          { lat: 27.1240, lng: 85.1240 },
+          { lat: 27.1240, lng: 89.1240 },
+          { lat: 21.1240, lng: 89.1240 },
+          { lat: 21.1240, lng: 85.1240 },
+          { lat: 27.1240, lng: 85.1240 }
+        ],
+        center: { lat: 22.9868, lng: 87.6850 },
+        highlight: false
+      },
+      {
+        name: 'Andhra Pradesh',
+        coords: [
+          { lat: 19.1240, lng: 76.5704 },
+          { lat: 19.1240, lng: 84.1240 },
+          { lat: 12.1240, lng: 84.1240 },
+          { lat: 12.1240, lng: 76.5704 },
+          { lat: 19.1240, lng: 76.5704 }
+        ],
+        center: { lat: 15.9129, lng: 79.7400 },
+        highlight: true
+      },
+      {
+        name: 'Kerala',
+        coords: [
+          { lat: 12.1240, lng: 74.1240 },
+          { lat: 12.1240, lng: 77.5704 },
+          { lat: 8.1240, lng: 77.5704 },
+          { lat: 8.1240, lng: 74.1240 },
+          { lat: 12.1240, lng: 74.1240 }
+        ],
+        center: { lat: 10.8505, lng: 76.2711 },
+        highlight: true
+      }
+    ]
+
+    const polygons = highlightedStates.map(state => {
+      const polygon = new window.google.maps.Polygon({
+        paths: state.coords,
+        strokeColor: state.highlight ? '#4285F4' : '#CCCCCC',
+        strokeOpacity: state.highlight ? 0.8 : 0.3,
+        strokeWeight: state.highlight ? 2 : 1,
+        fillColor: 'transparent',
+        fillOpacity: 0,
+        map: map,
+        title: state.name
+      })
+
+      // Add hover effects only for highlighted states
+      if (state.highlight) {
+        polygon.addListener('mouseover', () => {
+          polygon.setOptions({
+            fillColor: 'transparent',
+            fillOpacity: 0,
+            strokeColor: '#FF6B6B',
+            strokeWeight: 4,
+            strokeOpacity: 1
+          })
+          setHoveredState(state.name)
+        })
+
+        polygon.addListener('mouseout', () => {
+          polygon.setOptions({
+            fillColor: 'transparent',
+            fillOpacity: 0,
+            strokeColor: '#4285F4',
+            strokeWeight: 2,
+            strokeOpacity: 0.8
+          })
+          setHoveredState(null)
+        })
+      }
+
+      // Add click listener for state analysis
+      polygon.addListener('click', async (event) => {
+        const lat = event.latLng.lat()
+        const lng = event.latLng.lng()
+        
+        setClickedLocation({ lat, lng })
+        setIsAnalyzing(true)
+        setAnalysisResult(null)
+
+        try {
+          const result = await analyzeLocation(lat, lng)
+          setAnalysisResult(result)
+          
+          if (onLocationChange) {
+            onLocationChange({ lat, lng }, result)
+          }
+        } catch (error) {
+          console.error('Error analyzing location:', error)
+          setAnalysisResult({ error: error.message })
+          
+          if (onLocationChange) {
+            onLocationChange({ lat, lng }, { error: error.message })
+          }
+        } finally {
+          setIsAnalyzing(false)
+        }
+      })
+
+      return polygon
+    })
+
+    setStatePolygons(polygons)
+  }
 
   const initializeMap = () => {
     if (mapRef.current && window.google && window.google.maps) {
@@ -136,6 +335,9 @@ const LocationMap = ({ location, onLocationChange, isGettingLocation }) => {
           }
         })
       }
+
+      // Add state boundaries with hover effects
+      addStateBoundaries(map)
     }
   }
 
@@ -167,17 +369,26 @@ const LocationMap = ({ location, onLocationChange, isGettingLocation }) => {
   }
 
   return (
-    <div style={{ 
-      width: '100%', 
-      height: '100%', 
-      display: 'flex', 
-      flexDirection: 'column',
-      background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      boxShadow: 'var(--shadow-md)'
-    }}>
+    <>
+      <style>
+        {`
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}
+      </style>
+      <div style={{ 
+        width: '100%', 
+        height: '100%', 
+        display: 'flex', 
+        flexDirection: 'column',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: '12px',
+        overflow: 'hidden',
+        boxShadow: 'var(--shadow-md)'
+      }}>
       {/* Map Container */}
       <div style={{ flex: 1, position: 'relative', minHeight: '300px' }}>
         {mapError ? (
@@ -291,6 +502,25 @@ const LocationMap = ({ location, onLocationChange, isGettingLocation }) => {
         </div>
       )}
 
+      {/* Hover State Display */}
+      {hoveredState && (
+        <div style={{
+          padding: '0.75rem 1rem',
+          background: 'linear-gradient(135deg, #FF6B6B, #FF8E8E)',
+          borderTop: '1px solid #FF6B6B',
+          color: 'white',
+          textAlign: 'center',
+          fontSize: '0.9rem',
+          fontWeight: '600',
+          animation: 'fadeIn 0.3s ease-in-out'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <span>📍</span>
+            <span>Hovering over: {hoveredState}</span>
+          </div>
+        </div>
+      )}
+
       {/* Instructions */}
       <div style={{
         padding: '1rem',
@@ -304,7 +534,10 @@ const LocationMap = ({ location, onLocationChange, isGettingLocation }) => {
           🗺️ Interactive India Map
         </div>
         <div>
-          Click anywhere on the map to analyze groundwater data for that location
+          Hover over highlighted states (blue borders) to see details, click to analyze groundwater data
+        </div>
+        <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+          Only states with groundwater data are highlighted
         </div>
       </div>
 
@@ -420,7 +653,8 @@ const LocationMap = ({ location, onLocationChange, isGettingLocation }) => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }
 
