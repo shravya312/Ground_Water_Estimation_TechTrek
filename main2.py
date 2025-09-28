@@ -1063,90 +1063,186 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
 
     prompt = (
         f"You are an expert groundwater data analyst. Provide a comprehensive, well-formatted summary of the groundwater data.{language_instruction}\n"
-        f"""Here are the rules for data presentation:
-- If a specific year is provided, give data for that year.
-- If no specific year is provided, summarize the data including averages across all available years for the specified location (state or district).
-- ALWAYS include ALL relevant column data in your response - don't just mention a few key metrics.
-- Present data in a structured, formatted manner with clear headings, subheadings, and organized sections.
-- Use PROPER MARKDOWN formatting for better readability (headers, bullet points, tables, etc.).
-- Include both numerical values and their units (ham, ha, mm, %).
-- For each data point, explain what it represents and its significance.
-- Organize data into logical categories: Rainfall Data, Geographical Area, Groundwater Recharge, Extraction Data, etc.
-- Use PROPER MARKDOWN TABLES for numerical data - format like this:
-  | Parameter | Cultivated (C) (ham) | Non-Cultivated (NC) (ham) | Perennial (PQ) (ham) | Total (ham) |
-  |-----------|---------------------|---------------------------|---------------------|-------------|
-  | Rainfall Recharge | 15000.50 | 12000.25 | 0.0 | 27000.75 |
+        f"""FORMAT THE OUTPUT EXACTLY AS FOLLOWS:
 
-CRITICAL: YOU MUST INCLUDE ALL 7 MANDATORY SECTIONS IN EVERY REPORT. NO EXCEPTIONS.
+# 💧 Groundwater Data Analysis Report
 
-MANDATORY SECTIONS TO INCLUDE IN EVERY REPORT:
+## Query
+**Question:** [USER'S QUERY]
 
-1. RAINFALL DATA (Detailed Breakdown):
-   - Rainfall in Cultivated (C), Non-Cultivated (NC), and Perennial (PQ) areas
-   - Total rainfall with units (mm)
-   - Year-wise rainfall patterns if multiple years available
-   - Significance of rainfall for groundwater recharge
+## Analysis
+[COMPREHENSIVE ANALYSIS]
 
-2. GROUNDWATER SOURCES (Complete Source Analysis):
-   - Rainfall Recharge (C, NC, PQ, Total)
-   - Canals (C, NC, PQ, Total)
-   - Surface Water Irrigation (C, NC, PQ, Total)
-   - Ground Water Irrigation (C, NC, PQ, Total)
-   - Tanks and Ponds (C, NC, PQ, Total)
-   - Water Conservation Structures (C, NC, PQ, Total)
-   - Pipelines (C, NC, PQ, Total)
-   - Sewages and Flash Flood Channels (C, NC, PQ, Total)
-   - Total Annual Groundwater Recharge (C, NC, PQ, Total)
-   - Significance of each source for groundwater availability
+**Question:** [USER'S QUERY]
 
-3. EXTRACTION PURPOSES (Detailed Use Analysis):
-   - Ground Water Extraction for Domestic Use (C, NC, PQ, Total)
-   - Ground Water Extraction for Industrial Use (C, NC, PQ, Total)
-   - Ground Water Extraction for Irrigation (C, NC, PQ, Total)
-   - Total Ground Water Extraction for all uses (C, NC, PQ, Total)
-   - Analysis of extraction patterns and sustainability
+## Analysis
+Groundwater Estimation Report: [STATE NAME] - [YEAR]
 
-4. FUTURE AVAILABILITY AND ALLOCATION:
-   - Net Annual Ground Water Availability for Future Use (C, NC, PQ, Total)
-   - Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (C, NC, PQ, Total)
-   - Future sustainability projections
-   - Long-term resource management implications
+This report provides a comprehensive analysis of groundwater resources in [STATE NAME] for the year [YEAR]. It includes an overview of the state's groundwater status, district-wise analysis, and a comparative assessment. The report examines key parameters such as rainfall, recharge, extraction, and availability to understand the sustainability of groundwater resources in the region.
 
-5. EXTRACTION STAGE ANALYSIS:
-   - Stage of Ground Water Extraction (%) (C, NC, PQ, Total)
-   - Sustainability indicators and over-extraction warnings
-   - Critical thresholds and management recommendations
+### NATIONAL OVERVIEW SECTION:
 
-6. GEOGRAPHICAL AREA BREAKDOWN:
-   - Total Geographical Area (C, NC, PQ, Total)
-   - Recharge Worthy Area (C, NC, PQ, Total)
-   - Hilly Area (Total)
-   - Area utilization and recharge potential analysis
+#### GLOBAL NATIONAL GROUNDWATER OVERVIEW:
 
-7. ENVIRONMENTAL AND QUALITY DATA:
-   - Environmental Flows (C, NC, PQ, Total)
-   - Quality Tagging parameters (if available)
-   - Additional Potential Resources (if available)
-   - Environmental sustainability considerations
+Total Coverage: [X] states, [Y] districts, [Z] years of data ([YEAR RANGE])
+National Average Extraction: [X]% ([ABOVE/BELOW] sustainable limits)
+Critical Areas Nationwide: [X] over-exploited + critical areas
+Safe Areas Nationwide: [X] areas ([X]% of total)
+Water Quality Issues: [X] areas with contamination
+Most Over-exploited: [DISTRICT], [STATE] ([X]% extraction)
+Safest Region: [DISTRICT], [STATE] ([X]% extraction)
 
-IMPORTANT: STATE-LEVEL QUERIES WITHOUT SPECIFIC DISTRICTS:
-- If the query mentions only a state (e.g., "ground water estimation in karnataka") without specifying districts, automatically select and analyze ALL available districts from that state in the dataset.
-- Include data from multiple districts to provide a comprehensive state-level analysis.
-- Present district-wise breakdowns in tables and provide state-level averages/summaries.
-- Mention which districts are included in the analysis and note if any districts are missing from the dataset.
-- For state-level queries, organize the report with:
-  a) Individual district analysis (detailed breakdown for each district)
-  b) State-level comprehensive summary (averages and totals across all districts)
-  c) Comparative analysis between districts within the state
+### DATA AVAILABILITY SECTION:
 
-- Highlight key findings and trends.
-- Do NOT ask follow-up questions about what aspect of estimation the user is interested in. Provide a comprehensive summary of ALL available relevant metrics.
-- If data is missing for certain columns, mention that explicitly.
-- Format the output like a professional groundwater assessment report with proper markdown tables.
-- NEVER use pipe characters (|) or hyphens (-) as text - only use them for markdown table formatting.
-- ALWAYS include the 7 mandatory sections above in every groundwater estimation report.
-- If any section has no data, still include it with "No data available" and explain the implications.
-- FAILURE TO INCLUDE ALL 7 SECTIONS WILL RESULT IN AN INCOMPLETE REPORT.
+#### INFO DATA AVAILABILITY & COVERAGE:
+
+This report is based on available data for [X] districts in [STATE NAME] for the year [YEAR]. Data availability varies across different parameters. While taluk-level administrative data is fully available, block, mandal, and village-level data are not collected/available for this region. Additionally, watershed categorization and water quality testing data are also unavailable. Groundwater storage measurements are also not recorded.
+
+#### INFO DATA AVAILABILITY ANALYSIS:
+
+Based on [X] records found in the dataset:
+
+**ADMIN ADMINISTRATIVE DATA COVERAGE:**
+• Taluk data: [X]/[X] records ([X]%)
+• Block data: [X]/[X] records ([X]%)
+• Mandal data: [X]/[X] records ([X]%)
+• Village data: [X]/[X] records ([X]%)
+
+**TECH TECHNICAL DATA COVERAGE:**
+• Storage data: [X]/[X] records ([X]%)
+• Watershed data: [X]/[X] records ([X]%)
+• Quality data: [X]/[X] records ([X]%)
+
+**INSIGHT REASONS FOR MISSING DATA:**
+• Block data: Block-level administrative data not available in dataset
+• Mandal data: Mandal-level data not collected for this area
+• Village data: Village-level data not available in dataset
+• Watershed data: Watershed categorization not available for this region
+• Quality data: Water quality testing not conducted in this area
+
+**GLOBAL STATE-SPECIFIC CONTEXT:**
+Data collection practices vary across states. [STATE NAME] may have different data collection priorities or methodologies compared to other states in the dataset.
+
+## District-Wise Analysis
+
+[FOR EACH DISTRICT, INCLUDE THE FOLLOWING STRUCTURE:]
+
+### [DISTRICT NUMBER]. [DISTRICT NAME] District
+
+#### [DISTRICT NUMBER].[TALUK NUMBER]. [TALUK NAME] Taluk
+
+#### 1. 🚨 CRITICALITY ALERT & SUSTAINABILITY STATUS:
+
+| Parameter | Value | Unit | Significance |
+|-----------|-------|------|--------------|
+| Stage of Ground Water Extraction (%) | [X] | % | [SAFE/SEMI-CRITICAL/CRITICAL/OVER-EXPLOITED] ([X]%). [EXPLANATION] |
+| Groundwater categorization | [CATEGORY] | N/A | [EXPLANATION] |
+
+**ALERT CRITICAL ALERT:** [ALERT MESSAGE OR "No critical alert applicable."]
+
+**Sustainability Indicators:** [DETAILED EXPLANATION OF SUSTAINABILITY STATUS]
+
+#### 2. 📈 GROUNDWATER TREND ANALYSIS:
+
+| Parameter | Value |
+|-----------|-------|
+| Pre-monsoon groundwater trend | [RISING/FALLING/NEITHER RISING NOR FALLING] |
+| Post-monsoon groundwater trend | [RISING/FALLING/NEITHER RISING NOR FALLING] |
+
+**Trend Implications:** [DETAILED EXPLANATION OF TREND IMPLICATIONS]
+
+**Seasonal Variation Analysis:** [ANALYSIS OF SEASONAL VARIATIONS]
+
+#### 3. 🌧️ RAINFALL & RECHARGE DATA:
+
+| Parameter | Value | Unit | Significance |
+|-----------|-------|------|--------------|
+| Rainfall | [X] | mm | [EXPLANATION] |
+| Ground Water Recharge | [X] | ham | [EXPLANATION] |
+| Annual Ground Water Recharge | [X] | ham | [EXPLANATION] |
+| Environmental Flows | [X] | ham | [EXPLANATION] |
+
+**Significance:** [DETAILED EXPLANATION OF RAINFALL AND RECHARGE SIGNIFICANCE]
+
+#### 4. 💧 GROUNDWATER EXTRACTION & AVAILABILITY:
+
+| Parameter | Value | Unit | Significance |
+|-----------|-------|------|--------------|
+| Ground Water Extraction for all uses | [X] | ham | [EXPLANATION] |
+| Annual Extractable Ground Water Resource | [X] | ham | [EXPLANATION] |
+| Net Annual Ground Water Availability for Future Use | [X] | ham | [EXPLANATION] |
+| Allocation for Domestic Utilisation for 2025 | [X] | ham | [EXPLANATION] |
+
+**Extraction Efficiency:** [DETAILED ANALYSIS OF EXTRACTION EFFICIENCY]
+
+#### 5. 🔬 WATER QUALITY & ENVIRONMENTAL CONCERNS:
+
+| Parameter | Value |
+|-----------|-------|
+| Quality Tagging | [DATA AVAILABLE/NOT AVAILABLE] |
+
+**Quality Concerns:** [ANALYSIS OF WATER QUALITY CONCERNS]
+
+**Treatment Recommendations:** [RECOMMENDATIONS FOR WATER TREATMENT]
+
+**Environmental Sustainability:** [ASSESSMENT OF ENVIRONMENTAL SUSTAINABILITY]
+
+#### 6. 🏖️ COASTAL & SPECIAL AREAS:
+
+| Parameter | Value |
+|-----------|-------|
+| Coastal Areas identification | [DATA AVAILABLE/NOT AVAILABLE] |
+| Additional Potential Resources under specific conditions | [DATA AVAILABLE/NOT AVAILABLE] |
+
+**Special Management:** [SPECIAL MANAGEMENT CONSIDERATIONS]
+
+**Climate Resilience Considerations:** [CLIMATE RESILIENCE ANALYSIS]
+
+#### 7. 🏗️ GROUNDWATER STORAGE & RESOURCES:
+
+| Parameter | Value | Unit |
+|-----------|-------|------|
+| Instorage Unconfined Ground Water Resources | [X] | ham |
+| Total Ground Water Availability in Unconfined Aquifer | [X] | ham |
+| Dynamic Confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
+| Instorage Confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
+| Total Confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
+| Dynamic Semi-confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
+| Instorage Semi-confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
+| Total Semi-confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
+| Total Ground Water Availability in the Area | [X] | ham |
+
+**Storage Analysis:** [DETAILED ANALYSIS OF GROUNDWATER STORAGE]
+
+#### 8. 🌊 WATERSHED & ADMINISTRATIVE ANALYSIS:
+
+| Parameter | Value |
+|-----------|-------|
+| Watershed District | [DATA/NOT AVAILABLE] |
+| Watershed Category | [DATA/NOT AVAILABLE] |
+| Tehsil | [DATA/NOT AVAILABLE] |
+| Taluk | [TALUK NAME] |
+| Block | [DATA/NOT AVAILABLE] |
+| Mandal | [DATA/NOT AVAILABLE] |
+| Village | [DATA/NOT AVAILABLE] |
+
+**Watershed Status:** [ANALYSIS OF WATERSHED STATUS]
+
+---
+
+*Report generated by Groundwater RAG API - Multilingual Support*
+
+*Language: [LANGUAGE]*
+
+IMPORTANT INSTRUCTIONS:
+- Use the EXACT format shown above with emojis, specific section headers, and table structures
+- Include ALL available data in the appropriate sections
+- If data is not available, state "No data available" or "Not available"
+- For state-level queries, analyze ALL available districts from that state
+- Use proper markdown formatting for tables and headers
+- Include specific numerical values with units
+- Provide detailed explanations for each parameter
+- Maintain the professional report structure throughout
 """
         f"{conversation_history_str}"
         f"{extracted_params_str}"
