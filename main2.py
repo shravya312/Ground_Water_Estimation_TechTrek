@@ -1240,15 +1240,15 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 | Parameter | Value | Unit |
 |-----------|-------|------|
-| Instorage Unconfined Ground Water Resources | [X] | ham |
-| Total Ground Water Availability in Unconfined Aquifer | [X] | ham |
-| Dynamic Confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
-| Instorage Confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
-| Total Confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
-| Dynamic Semi-confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
-| Instorage Semi-confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
-| Total Semi-confined Ground Water Resources | [DATA/NOT AVAILABLE] | ham |
-| Total Ground Water Availability in the Area | [X] | ham |
+| Instorage Unconfined Ground Water Resources | [instorage_unconfined_ground_water_resourcesham] | ham |
+| Total Ground Water Availability in Unconfined Aquifer | [total_ground_water_availability_in_unconfined_aquifier_ham] | ham |
+| Dynamic Confined Ground Water Resources | [dynamic_confined_ground_water_resourcesham] | ham |
+| Instorage Confined Ground Water Resources | [instorage_confined_ground_water_resourcesham] | ham |
+| Total Confined Ground Water Resources | [total_confined_ground_water_resources_ham] | ham |
+| Dynamic Semi-confined Ground Water Resources | [dynamic_semi_confined_ground_water_resources_ham] | ham |
+| Instorage Semi-confined Ground Water Resources | [instorage_semi_confined_ground_water_resources_ham] | ham |
+| Total Semi-confined Ground Water Resources | [total_semiconfined_ground_water_resources_ham] | ham |
+| Total Ground Water Availability in the Area | [total_ground_water_availability_in_the_area_ham] | ham |
 
 **Storage Analysis:** [DETAILED ANALYSIS OF GROUNDWATER STORAGE]
 
