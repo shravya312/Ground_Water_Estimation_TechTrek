@@ -1184,8 +1184,8 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 | Parameter | Value |
 |-----------|-------|
-| Pre-monsoon groundwater trend | [RISING/FALLING/NEITHER RISING NOR FALLING] |
-| Post-monsoon groundwater trend | [RISING/FALLING/NEITHER RISING NOR FALLING] |
+| Pre-monsoon groundwater trend | [pre_monsoon_of_gw_trend] |
+| Post-monsoon groundwater trend | [post_monsoon_of_gw_trend] |
 
 **Trend Implications:** [DETAILED EXPLANATION OF TREND IMPLICATIONS]
 
