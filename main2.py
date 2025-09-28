@@ -1424,6 +1424,56 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
         target_state = 'TELANGANA'
     elif 'andhra pradesh' in query_lower or 'andhra' in query_lower:
         target_state = 'ANDHRA PRADESH'
+    elif 'chhattisgarh' in query_lower or 'chattisgarh' in query_lower:
+        target_state = 'CHHATTISGARH'
+    elif 'madhya pradesh' in query_lower or 'mp' in query_lower:
+        target_state = 'MADHYA PRADESH'
+    elif 'uttar pradesh' in query_lower or 'up' in query_lower:
+        target_state = 'UTTAR PRADESH'
+    elif 'jharkhand' in query_lower:
+        target_state = 'JHARKHAND'
+    elif 'assam' in query_lower:
+        target_state = 'ASSAM'
+    elif 'punjab' in query_lower:
+        target_state = 'PUNJAB'
+    elif 'haryana' in query_lower:
+        target_state = 'HARYANA'
+    elif 'himachal pradesh' in query_lower or 'hp' in query_lower:
+        target_state = 'HIMACHAL PRADESH'
+    elif 'jammu and kashmir' in query_lower or 'j&k' in query_lower:
+        target_state = 'JAMMU AND KASHMIR'
+    elif 'uttarakhand' in query_lower or 'uk' in query_lower:
+        target_state = 'UTTARAKHAND'
+    elif 'goa' in query_lower:
+        target_state = 'GOA'
+    elif 'sikkim' in query_lower:
+        target_state = 'SIKKIM'
+    elif 'arunachal pradesh' in query_lower:
+        target_state = 'ARUNACHAL PRADESH'
+    elif 'nagaland' in query_lower:
+        target_state = 'NAGALAND'
+    elif 'manipur' in query_lower:
+        target_state = 'MANIPUR'
+    elif 'mizoram' in query_lower:
+        target_state = 'MIZORAM'
+    elif 'tripura' in query_lower:
+        target_state = 'TRIPURA'
+    elif 'meghalaya' in query_lower:
+        target_state = 'MEGHALAYA'
+    elif 'delhi' in query_lower:
+        target_state = 'DELHI'
+    elif 'chandigarh' in query_lower:
+        target_state = 'CHANDIGARH'
+    elif 'puducherry' in query_lower or 'pondicherry' in query_lower:
+        target_state = 'PUDUCHERRY'
+    elif 'andaman and nicobar' in query_lower:
+        target_state = 'ANDAMAN AND NICOBAR ISLANDS'
+    elif 'dadra and nagar haveli' in query_lower:
+        target_state = 'DADRA AND NAGAR HAVELI'
+    elif 'daman and diu' in query_lower:
+        target_state = 'DAMAN AND DIU'
+    elif 'lakshadweep' in query_lower:
+        target_state = 'LAKSHADWEEP'
     
     print(f"[DEBUG] Extracted target_state: {target_state}")
     

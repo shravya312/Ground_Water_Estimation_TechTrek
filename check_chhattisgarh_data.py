@@ -1,164 +1,179 @@
 #!/usr/bin/env python3
 """
-Check Chhattisgarh data in current Qdrant collection
+Check if Chhattisgarh data exists in both CSV and Qdrant
 """
 
 import os
-from qdrant_client import QdrantClient
+import sys
+import pandas as pd
 from dotenv import load_dotenv
+from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
 
+# Load environment variables
 load_dotenv()
 
-QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
-COLLECTION_NAME = "groundwater_excel_collection"
-
-def check_chhattisgarh_data():
-    """Check Chhattisgarh data in current collection."""
-    print("🔍 Checking Chhattisgarh Data in Current Collection")
-    print("=" * 60)
-    
-    client = QdrantClient(
-        url=QDRANT_URL,
-        api_key=QDRANT_API_KEY if QDRANT_API_KEY else None,
-        timeout=60
-    )
+def check_csv_data():
+    """Check if Chhattisgarh exists in CSV file"""
+    print("Checking CSV data...")
     
     try:
-        # Get collection info
-        collection_info = client.get_collection(COLLECTION_NAME)
-        print(f"📊 Collection: {COLLECTION_NAME}")
-        print(f"   Total Points: {collection_info.points_count:,}")
+        # Load CSV data
+        df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
+        print(f"CSV loaded: {len(df)} records")
         
-        # Search for Chhattisgarh data
-        print(f"\n🔍 Searching for Chhattisgarh data...")
-        
-        # Try different variations of Chhattisgarh
+        # Check for Chhattisgarh variations
         chhattisgarh_variations = [
-            "CHHATTISGARH",
-            "CHATTISGARH", 
-            "CHHATISGARH",
-            "CHHATTISGARH",
-            "CHHATISGARH"
+            'CHHATTISGARH', 'chhattisgarh', 'CHATTISGARH', 'chattisgarh',
+            'Chhattisgarh', 'Chattisgarh'
         ]
         
-        chhattisgarh_records = []
+        found_states = set()
+        for col in ['state', 'STATE']:
+            if col in df.columns:
+                unique_states = df[col].dropna().unique()
+                found_states.update(unique_states)
         
-        for variation in chhattisgarh_variations:
-            try:
-                # Search by state
-                results = client.search(
-                    collection_name=COLLECTION_NAME,
-                    query_vector=[0.0] * 768,  # Dummy vector for filtering
-                    query_filter={
-                        "must": [
-                            {"key": "STATE", "match": {"value": variation}}
-                        ]
-                    },
-                    limit=100,
-                    with_payload=True,
-                    with_vectors=False
-                )
+        print(f"Found {len(found_states)} unique states in CSV")
+        
+        # Check for Chhattisgarh
+        chhattisgarh_found = False
+        for state in found_states:
+            if any(var in str(state).upper() for var in ['CHHATTISGARH', 'CHATTISGARH']):
+                print(f"✅ Found Chhattisgarh in CSV: '{state}'")
+                chhattisgarh_found = True
                 
-                if results:
-                    print(f"   ✅ Found {len(results)} records for '{variation}'")
-                    chhattisgarh_records.extend(results)
-                else:
-                    print(f"   ❌ No records found for '{variation}'")
-                    
-            except Exception as e:
-                print(f"   ⚠️ Error searching for '{variation}': {e}")
+                # Show sample records
+                chhattisgarh_data = df[df[col].str.contains('CHHATTISGARH|CHATTISGARH', case=False, na=False)]
+                print(f"   Records found: {len(chhattisgarh_data)}")
+                if len(chhattisgarh_data) > 0:
+                    print(f"   Sample districts: {chhattisgarh_data['district'].dropna().unique()[:5].tolist()}")
+                break
         
-        # Remove duplicates
-        unique_records = {}
-        for record in chhattisgarh_records:
-            record_id = record.id
-            if record_id not in unique_records:
-                unique_records[record_id] = record
+        if not chhattisgarh_found:
+            print("❌ Chhattisgarh not found in CSV")
+            print("Available states sample:")
+            for state in sorted(list(found_states))[:20]:
+                print(f"  - {state}")
         
-        chhattisgarh_records = list(unique_records.values())
-        
-        print(f"\n📊 Chhattisgarh Data Summary:")
-        print(f"   Total unique records: {len(chhattisgarh_records)}")
-        
-        if chhattisgarh_records:
-            print(f"\n📋 Sample Chhattisgarh Records:")
-            for i, record in enumerate(chhattisgarh_records[:3]):
-                payload = record.payload
-                print(f"\nRecord {i+1}:")
-                print(f"   STATE: {payload.get('STATE', 'N/A')}")
-                print(f"   DISTRICT: {payload.get('DISTRICT', 'N/A')}")
-                print(f"   Assessment_Year: {payload.get('Assessment_Year', 'N/A')}")
-                
-                # Check key fields
-                key_fields = [
-                    'Rainfall (mm) - Total',
-                    'Ground Water Recharge (ham) - Total',
-                    'Ground Water Extraction for all uses (ha.m) - Total',
-                    'Stage of Ground Water Extraction (%) - Total',
-                    'Net Annual Ground Water Availability for Future Use (ham) - Total'
-                ]
-                
-                print(f"   Key Data Fields:")
-                for field in key_fields:
-                    value = payload.get(field, 'N/A')
-                    if value == 0.0 or value == '0.0' or value == '':
-                        print(f"     {field}: {value} (NULL/EMPTY)")
-                    else:
-                        print(f"     {field}: {value}")
-            
-            # Check data quality
-            print(f"\n🔍 Data Quality Analysis:")
-            total_fields = len(chhattisgarh_records[0].payload) if chhattisgarh_records else 0
-            null_count = 0
-            
-            for record in chhattisgarh_records:
-                for key, value in record.payload.items():
-                    if value is None or value == 0.0 or value == '0.0' or value == '':
-                        null_count += 1
-            
-            if total_fields > 0:
-                null_percentage = (null_count / (len(chhattisgarh_records) * total_fields)) * 100
-                print(f"   Total fields checked: {len(chhattisgarh_records) * total_fields}")
-                print(f"   Null/Empty fields: {null_count}")
-                print(f"   Data completeness: {100 - null_percentage:.1f}%")
-            
-            # Get unique districts
-            districts = set()
-            years = set()
-            for record in chhattisgarh_records:
-                districts.add(record.payload.get('DISTRICT', 'Unknown'))
-                years.add(record.payload.get('Assessment_Year', 'Unknown'))
-            
-            print(f"\n📊 Coverage:")
-            print(f"   Districts: {len(districts)} - {list(districts)}")
-            print(f"   Years: {len(years)} - {list(years)}")
-            
-        else:
-            print(f"\n❌ No Chhattisgarh data found in current collection!")
-            print(f"   This explains why the reports show incomplete data.")
-            print(f"   Need to upload complete INGRIS dataset (162,632 records)")
-        
-        return len(chhattisgarh_records)
+        return chhattisgarh_found
         
     except Exception as e:
-        print(f"❌ Error checking collection: {e}")
-        return 0
+        print(f"Error checking CSV: {e}")
+        return False
+
+def check_qdrant_data():
+    """Check if Chhattisgarh exists in Qdrant"""
+    print("\nChecking Qdrant data...")
+    
+    try:
+        # Initialize Qdrant client
+        client = QdrantClient(
+            url=os.getenv('QDRANT_URL'),
+            api_key=os.getenv('QDRANT_API_KEY') if os.getenv('QDRANT_API_KEY') else None,
+            timeout=30
+        )
+        print("Qdrant client connected")
+        
+        # Initialize embedding model
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        print("Embedding model loaded")
+        
+        # Test queries for Chhattisgarh
+        test_queries = [
+            "CHHATTISGARH",
+            "chhattisgarh groundwater",
+            "groundwater estimation chhattisgarh"
+        ]
+        
+        chhattisgarh_found = False
+        for query in test_queries:
+            try:
+                print(f"\nTesting query: '{query}'")
+                
+                # Create query vector
+                query_vector = model.encode(query).tolist()
+                
+                # Search in Qdrant
+                results = client.search(
+                    collection_name="ingris_groundwater_collection",
+                    query_vector=query_vector,
+                    limit=10
+                )
+                
+                print(f"  Results found: {len(results)}")
+                
+                if results:
+                    states_found = set()
+                    for result in results[:5]:
+                        payload = result.payload
+                        state = payload.get('state', 'Unknown')
+                        district = payload.get('district', 'Unknown')
+                        states_found.add(state)
+                        print(f"    State: {state}, District: {district}")
+                    
+                    # Check if any result contains Chhattisgarh
+                    if any('CHHATTISGARH' in state.upper() or 'CHATTISGARH' in state.upper() for state in states_found):
+                        print("  ✅ Chhattisgarh found in Qdrant!")
+                        chhattisgarh_found = True
+                    else:
+                        print(f"  States found: {list(states_found)}")
+                
+            except Exception as e:
+                print(f"  Error with query '{query}': {e}")
+        
+        if not chhattisgarh_found:
+            print("❌ Chhattisgarh not found in Qdrant")
+            
+            # Get a sample of states from Qdrant
+            print("\nSampling states from Qdrant...")
+            try:
+                sample_vector = model.encode("groundwater").tolist()
+                sample_results = client.search(
+                    collection_name="ingris_groundwater_collection",
+                    query_vector=sample_vector,
+                    limit=50
+                )
+                
+                states = set()
+                for result in sample_results:
+                    state = result.payload.get('state', '')
+                    if state:
+                        states.add(state)
+                
+                print(f"Sample states from Qdrant ({len(states)}):")
+                for state in sorted(list(states))[:20]:
+                    print(f"  - {state}")
+                    
+            except Exception as e:
+                print(f"Error sampling states: {e}")
+        
+        return chhattisgarh_found
+        
+    except Exception as e:
+        print(f"Error checking Qdrant: {e}")
+        return False
+
+def main():
+    """Main function"""
+    print("Checking Chhattisgarh data availability")
+    print("=" * 50)
+    
+    csv_found = check_csv_data()
+    qdrant_found = check_qdrant_data()
+    
+    print(f"\nSummary:")
+    print(f"  CSV data: {'✅ Found' if csv_found else '❌ Not found'}")
+    print(f"  Qdrant data: {'✅ Found' if qdrant_found else '❌ Not found'}")
+    
+    if csv_found and qdrant_found:
+        print("🎉 Chhattisgarh data is available in both sources!")
+    elif csv_found:
+        print("⚠️  Chhattisgarh data only in CSV, not in Qdrant")
+    elif qdrant_found:
+        print("⚠️  Chhattisgarh data only in Qdrant, not in CSV")
+    else:
+        print("❌ Chhattisgarh data not found in either source")
 
 if __name__ == "__main__":
-    records = check_chhattisgarh_data()
-    
-    if records == 0:
-        print(f"\n🚨 ISSUE IDENTIFIED:")
-        print(f"   Current collection has NO Chhattisgarh data!")
-        print(f"   This is why reports show null/empty values.")
-        print(f"\n💡 SOLUTION:")
-        print(f"   Upload complete INGRIS dataset (162,632 records)")
-        print(f"   which includes comprehensive Chhattisgarh data.")
-    elif records < 10:
-        print(f"\n⚠️ LIMITED DATA:")
-        print(f"   Only {records} Chhattisgarh records found.")
-        print(f"   Need complete dataset for comprehensive analysis.")
-    else:
-        print(f"\n✅ SUFFICIENT DATA:")
-        print(f"   Found {records} Chhattisgarh records.")
+    main()

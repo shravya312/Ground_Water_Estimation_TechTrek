@@ -1,94 +1,99 @@
 #!/usr/bin/env python3
 """
-Check the actual Qdrant payload structure
+Check Qdrant payload structure to understand why states show as Unknown
 """
 
-import main2
+import os
+import sys
+from dotenv import load_dotenv
+from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
 
-def check_qdrant_payload():
-    """Check the actual payload structure in Qdrant."""
-    print("🔍 Checking Qdrant Payload Structure")
-    print("=" * 50)
+# Load environment variables
+load_dotenv()
+
+def check_qdrant_payload_structure():
+    """Check the actual payload structure in Qdrant"""
+    print("Checking Qdrant payload structure...")
     
-    # Initialize components
-    main2._init_components()
-    
-    # Get sample data
-    results = main2._qdrant_client.scroll(
-        collection_name='groundwater_excel_collection', 
-        limit=5, 
-        with_payload=True
-    )
-    
-    print("📋 Sample Payloads:")
-    print("-" * 50)
-    
-    for i, point in enumerate(results[0]):
-        payload = point.payload
-        print(f"\nRecord {i+1}:")
-        print(f"  Payload keys: {list(payload.keys())}")
+    try:
+        # Initialize Qdrant client
+        client = QdrantClient(
+            url=os.getenv('QDRANT_URL'),
+            api_key=os.getenv('QDRANT_API_KEY') if os.getenv('QDRANT_API_KEY') else None,
+            timeout=30
+        )
+        print("Qdrant client connected")
         
-        # Check if it has individual fields or just combined text
-        if 'STATE' in payload:
-            print(f"  STATE: {payload['STATE']}")
-        if 'DISTRICT' in payload:
-            print(f"  DISTRICT: {payload['DISTRICT']}")
-        if 'Assessment_Year' in payload:
-            print(f"  Assessment_Year: {payload['Assessment_Year']}")
+        # Use correct 768-dimensional model
+        model = SentenceTransformer('all-mpnet-base-v2')
+        print(f"Using model: all-mpnet-base-v2 (768 dimensions)")
         
-        # Show the text content
-        text = payload.get('text', 'N/A')
-        print(f"  Text content: {text[:300]}...")
+        # Test with Chhattisgarh query
+        query_text = "groundwater chhattisgarh"
+        query_vector = model.encode(query_text).tolist()
         
-        # Try to extract state from text
-        if 'STATE' not in payload and 'text' in payload:
-            text_lower = text.lower()
-            if 'karnataka' in text_lower:
-                print(f"  🎯 KARNATAKA found in text!")
-            elif 'maharashtra' in text_lower:
-                print(f"  🎯 MAHARASHTRA found in text!")
-            elif 'gujarat' in text_lower:
-                print(f"  🎯 GUJARAT found in text!")
-            elif 'rajasthan' in text_lower:
-                print(f"  🎯 RAJASTHAN found in text!")
-            elif 'tamil' in text_lower:
-                print(f"  🎯 TAMIL NADU found in text!")
-    
-    # Check for Karnataka in all data
-    print(f"\n🔍 Searching for Karnataka in all data...")
-    all_results = main2._qdrant_client.scroll(
-        collection_name='groundwater_excel_collection', 
-        limit=1000, 
-        with_payload=True
-    )
-    
-    karnataka_found = 0
-    states_found = set()
-    
-    for point in all_results[0]:
-        text = point.payload.get('text', '').lower()
-        if 'karnataka' in text:
-            karnataka_found += 1
-            print(f"  ✅ Karnataka record found: {point.payload.get('text', '')[:100]}...")
+        print(f"Testing query: '{query_text}'")
         
-        # Extract state from text
-        if 'unnamed: 1:' in text:
-            # This is the old format with Unnamed columns
-            parts = text.split('unnamed: 1:')
-            if len(parts) > 1:
-                state_part = parts[1].split('|')[0].strip()
-                if state_part:
-                    states_found.add(state_part.upper())
-    
-    print(f"\n📊 Results:")
-    print(f"  Karnataka records found: {karnataka_found}")
-    print(f"  States found in data: {sorted(list(states_found))}")
-    
-    if karnataka_found > 0:
-        print(f"\n✅ GOOD: Karnataka data is available in the collection!")
-    else:
-        print(f"\n❌ PROBLEM: No Karnataka data found in the collection!")
-        print(f"   The collection contains data for: {sorted(list(states_found))}")
+        # Search in Qdrant
+        results = client.search(
+            collection_name="ingris_groundwater_collection",
+            query_vector=query_vector,
+            limit=5
+        )
+        
+        print(f"Results found: {len(results)}")
+        
+        if results:
+            print("\nDetailed payload analysis:")
+            for i, result in enumerate(results):
+                print(f"\nResult {i+1}:")
+                print(f"  Score: {result.score}")
+                print(f"  ID: {result.id}")
+                print(f"  Payload keys: {list(result.payload.keys())}")
+                print(f"  Full payload: {result.payload}")
+                
+                # Check different possible state field names
+                state_fields = ['state', 'STATE', 'State', 'state_name', 'STATE_NAME']
+                for field in state_fields:
+                    if field in result.payload:
+                        print(f"  {field}: {result.payload[field]}")
+        
+        # Also try a broader search to see more states
+        print(f"\nTrying broader search...")
+        broad_query = "groundwater"
+        broad_vector = model.encode(broad_query).tolist()
+        
+        broad_results = client.search(
+            collection_name="ingris_groundwater_collection",
+            query_vector=broad_vector,
+            limit=10
+        )
+        
+        print(f"Broad search results: {len(broad_results)}")
+        
+        states_found = set()
+        for i, result in enumerate(broad_results):
+            payload = result.payload
+            print(f"\nBroad Result {i+1}:")
+            print(f"  Payload keys: {list(payload.keys())}")
+            
+            # Try all possible state fields
+            for field in ['state', 'STATE', 'State', 'state_name', 'STATE_NAME']:
+                if field in payload:
+                    state_value = payload[field]
+                    states_found.add(state_value)
+                    print(f"  {field}: {state_value}")
+        
+        print(f"\nUnique states found: {len(states_found)}")
+        for state in sorted(states_found):
+            if 'CHHATTISGARH' in str(state).upper() or 'CHATTISGARH' in str(state).upper():
+                print(f"  *** {state} ***")
+            else:
+                print(f"  {state}")
+        
+    except Exception as e:
+        print(f"Error: {e}")
 
 if __name__ == "__main__":
-    check_qdrant_payload()
+    check_qdrant_payload_structure()
