@@ -17,7 +17,7 @@ def check_collections():
             path="./chroma_db",
             settings=Settings(anonymized_telemetry=False)
         )
-        
+         
         # List all collections
         collections = client.list_collections()
         print(f"📊 Found {len(collections)} collections:")

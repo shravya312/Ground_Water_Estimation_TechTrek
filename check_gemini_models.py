@@ -105,14 +105,14 @@ def test_updated_integration():
     
     try:
         # Test the updated main.py
-        import main
+        import main2
         
-        if hasattr(main, '_gemini_model') and main._gemini_model:
+        if hasattr(main2, '_gemini_model') and main2._gemini_model:
             print('✅ Gemini model loaded in main.py')
             
             # Test a simple query
             test_coords = (28.7041, 77.1025)  # Delhi
-            state = main.get_state_from_coordinates(test_coords[0], test_coords[1])
+            state = main2.get_state_from_coordinates(test_coords[0], test_coords[1])
             print(f'📍 State detection test: {test_coords} -> {state}')
             
             return True
