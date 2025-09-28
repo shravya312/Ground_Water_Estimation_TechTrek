@@ -635,28 +635,85 @@ function Chat1() {
       }}>
         {/* Chat Header */}
         <header style={{
-          backgroundColor: 'white',
-          borderBottom: '1px solid #e2e8f0',
-          padding: '1rem 1.5rem',
+          background: 'linear-gradient(135deg, rgba(30, 64, 175, 0.9) 0%, rgba(59, 130, 246, 0.8) 50%, rgba(14, 165, 233, 0.9) 100%)',
+          borderBottom: 'none',
+          padding: '2rem 2rem 3rem 2rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          flexShrink: 0
+          flexShrink: 0,
+          boxShadow: '0 8px 32px rgba(30, 64, 175, 0.4)',
+          position: 'relative',
+          overflow: 'hidden',
+          clipPath: 'polygon(0 0, 100% 0, 100% 85%, 0 100%)',
+          marginBottom: '-1rem'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {/* Background Images and Patterns */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: `
+              radial-gradient(circle at 10% 20%, rgba(255, 255, 255, 0.15) 0%, transparent 40%),
+              radial-gradient(circle at 90% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+              radial-gradient(circle at 50% 50%, rgba(14, 165, 233, 0.2) 0%, transparent 60%)
+            `,
+            pointerEvents: 'none'
+          }} />
+          
+          {/* Wave Pattern Overlay */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            pointerEvents: 'none'
+          }} />
+          
+          {/* Floating Elements */}
+          <div style={{
+            position: 'absolute',
+            top: '20%',
+            right: '10%',
+            width: '100px',
+            height: '100px',
+            background: 'rgba(255, 255, 255, 0.1)',
+            borderRadius: '50%',
+            filter: 'blur(20px)',
+            pointerEvents: 'none'
+          }} />
+          <div style={{
+            position: 'absolute',
+            bottom: '10%',
+            left: '15%',
+            width: '60px',
+            height: '60px',
+            background: 'rgba(14, 165, 233, 0.2)',
+            borderRadius: '50%',
+            filter: 'blur(15px)',
+            pointerEvents: 'none'
+          }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', position: 'relative', zIndex: 2 }}>
             {/* Menu Button */}
             {!sidebarOpen && (
               <button
                 onClick={toggleSidebar}
                 style={{
-                  backgroundColor: '#E0F2FE',
-                  border: 'none',
+                  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                  border: '2px solid rgba(255, 255, 255, 0.3)',
                   fontSize: '1.5rem',
-                  color: '#1E40AF',
+                  color: 'white',
                   cursor: 'pointer',
                   padding: '0.5rem',
                   borderRadius: '0.5rem',
-                  marginRight: '0.75rem'
+                  marginRight: '0.75rem',
+                  transition: 'all 0.3s ease',
+                  backdropFilter: 'blur(10px)',
+                  boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)'
                 }}
                 title="Open sidebar"
               >
@@ -665,41 +722,45 @@ function Chat1() {
             )}
             <div>
               <h1 style={{
-                fontSize: '1.25rem',
+                fontSize: '1.75rem',
                 fontWeight: '800',
                 margin: 0,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.125rem'
+                gap: '0.25rem',
+                textShadow: '0 4px 12px rgba(0, 0, 0, 0.4)'
               }}>
                 <span style={{ 
-                  color: '#1e40af',
+                  color: '#ffffff',
                   fontWeight: '900',
-                  textShadow: '0 2px 4px rgba(30, 64, 175, 0.3)'
+                  textShadow: '0 4px 12px rgba(0, 0, 0, 0.5)'
                 }}>Jal</span>
                 <span style={{ 
-                  color: '#0ea5e9',
+                  color: '#e0f2fe',
                   fontWeight: '800',
-                  textShadow: '0 2px 4px rgba(14, 165, 233, 0.3)'
+                  textShadow: '0 4px 12px rgba(0, 0, 0, 0.5)'
                 }}>Sanchay</span>
               </h1>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', position: 'relative', zIndex: 2 }}>
             <button 
               onClick={() => setShowLocationMap(true)}
               style={{
-                padding: '8px 16px',
-                backgroundColor: '#E0F2FE',
-                color: '#1E40AF',
-                border: 'none',
-                borderRadius: '20px',
+                padding: '10px 18px',
+                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                color: 'white',
+                border: '2px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: '25px',
                 cursor: 'pointer',
                 fontSize: '0.9rem',
                 fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '8px',
+                transition: 'all 0.3s ease',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)'
               }}
               title="Location Analysis"
             >
@@ -717,17 +778,20 @@ function Chat1() {
             <button 
               onClick={() => setShowVisualizationPanel(true)}
               style={{
-                padding: '8px 16px',
-                backgroundColor: '#E0F2FE',
-                color: '#1E40AF',
-                border: 'none',
-                borderRadius: '20px',
+                padding: '10px 18px',
+                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                color: 'white',
+                border: '2px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: '25px',
                 cursor: 'pointer',
                 fontSize: '0.9rem',
                 fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '8px',
+                transition: 'all 0.3s ease',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 4px 15px rgba(0, 0, 0, 0.1)'
               }}
               title="Charts & Visualizations"
             >
@@ -740,17 +804,20 @@ function Chat1() {
             <button 
               onClick={() => signOut(auth)} 
               style={{
-                padding: '8px 16px',
-                backgroundColor: '#E0F2FE',
-                color: '#1E40AF',
-                border: 'none',
-                borderRadius: '20px',
+                padding: '10px 18px',
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                color: 'white',
+                border: '2px solid rgba(239, 68, 68, 0.3)',
+                borderRadius: '25px',
                 cursor: 'pointer',
                 fontSize: '0.9rem',
                 fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '6px'
+                gap: '8px',
+                transition: 'all 0.3s ease',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 4px 15px rgba(239, 68, 68, 0.2)'
               }}
               title="Sign out"
             >
@@ -762,6 +829,30 @@ function Chat1() {
               Sign Out
             </button>
           </div>
+          
+          {/* Subtle Line at bottom of header */}
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: '10%',
+            right: '10%',
+            height: '2px',
+            background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 20%, rgba(255, 255, 255, 0.6) 50%, rgba(255, 255, 255, 0.3) 80%, transparent 100%)',
+            pointerEvents: 'none'
+          }} />
+          
+          {/* Wave SVG at bottom */}
+          <div style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: '2rem',
+            background: `url("data:image/svg+xml,%3Csvg viewBox='0 0 1200 120' preserveAspectRatio='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0,0V46.29c47.79,22.2,103.59,32.17,158,28,70.36-5.37,136.33-33.31,206.8-37.5C438.64,32.43,512.34,53.67,583,72.05c69.27,18,138.3,24.88,209.4,13.08,36.15-6,69.85-17.84,104.45-29.34C989.49,25,1110-46.29,1200,0V120H0Z' fill='%23ffffff' fill-opacity='0.1'/%3E%3C/svg%3E")`,
+            backgroundSize: 'cover',
+            backgroundRepeat: 'no-repeat',
+            pointerEvents: 'none'
+          }} />
         </header>
 
         {/* Messages Area */}
@@ -769,14 +860,61 @@ function Chat1() {
           flex: 1,
           overflowY: 'auto',
           padding: '1rem',
-          backgroundColor: '#f8fafc'
+          background: `linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)`,
+          position: 'relative'
         }}>
-          <div style={{ maxWidth: '800px', margin: '0 auto', paddingBottom: '1rem' }}>
+          {/* Centered Water Image with White Cover */}
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '300px',
+            height: '200px',
+            background: `url('/src/water.jpg')`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            borderRadius: '20px',
+            pointerEvents: 'none',
+            zIndex: 1
+          }} />
+          
+          {/* White Cover Over Water Image */}
+          <div style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '300px',
+            height: '200px',
+            background: 'rgba(255, 255, 255, 0.8)',
+            borderRadius: '20px',
+            pointerEvents: 'none',
+            zIndex: 2
+          }} />
+          
+          {/* Single Water Droplet on Right Side */}
+          <div style={{
+            position: 'absolute',
+            top: '30%',
+            right: '30%',
+            width: '80px',
+            height: '80px',
+            background: `url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M40 10c-16.5 0-30 13.5-30 30 0 16.5 13.5 30 30 30s30-13.5 30-30c0-16.5-13.5-30-30-30zm0 5c13.8 0 25 11.2 25 25s-11.2 25-25 25-25-11.2-25-25 11.2-25 25-25z' fill='%231e40af' fill-opacity='0.08'/%3E%3Cpath d='M40 20c-11 0-20 9-20 20s9 20 20 20 20-9 20-20-9-20-20-20zm0 5c8.3 0 15 6.7 15 15s-6.7 15-15 15-15-6.7-15-15 6.7-15 15-15z' fill='%231e40af' fill-opacity='0.12'/%3E%3Cpath d='M40 30c-5.5 0-10 4.5-10 10s4.5 10 10 10 10-4.5 10-10-4.5-10-10-10zm0 3c3.9 0 7 3.1 7 7s-3.1 7-7 7-7-3.1-7-7 3.1-7 7-7z' fill='%231e40af' fill-opacity='0.15'/%3E%3C/svg%3E")`,
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            pointerEvents: 'none',
+            zIndex: 3
+          }} />
+          
+          <div style={{ maxWidth: '800px', margin: '0 auto', paddingBottom: '1rem', position: 'relative', zIndex: 3 }}>
             {messages.map(m => (
               <div key={m.id}>
                 <div style={{
-                  display: 'flex',
-                  justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
+                display: 'flex',
+                justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
                   marginBottom: '1rem',
                   alignItems: 'flex-start',
                   gap: '0.5rem'
@@ -804,27 +942,134 @@ function Chat1() {
                     </div>
                   )}
                   
-                  <div style={{
-                    maxWidth: '70%',
-                    padding: '0.75rem 1rem',
-                    borderRadius: m.role === 'user' ? '1rem 1rem 0.25rem 1rem' : '1rem 1rem 1rem 0.25rem',
-                    backgroundColor: m.role === 'user' ? '#0ea5e9' : 'white',
-                    color: m.role === 'user' ? 'white' : '#1e293b',
-                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                    border: m.role === 'user' ? 'none' : '1px solid #e2e8f0',
-                    fontSize: '0.875rem',
-                    lineHeight: '1.5'
+                <div style={{
+                  maxWidth: '70%',
+                    padding: '1rem 1.25rem',
+                    borderRadius: m.role === 'user' ? '1.5rem 1.5rem 0.5rem 1.5rem' : '1.5rem 1.5rem 1.5rem 0.5rem',
+                    background: m.role === 'user' 
+                      ? 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'
+                      : 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%)',
+                  color: m.role === 'user' ? 'white' : '#1e293b',
+                    boxShadow: m.role === 'user' 
+                      ? '0 8px 25px rgba(14, 165, 233, 0.3), 0 4px 12px rgba(0, 0, 0, 0.1)'
+                      : '0 8px 25px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.05)',
+                    border: m.role === 'user' ? 'none' : '1px solid rgba(226, 232, 240, 0.5)',
+                  fontSize: '0.875rem',
+                    lineHeight: '1.6',
+                    position: 'relative',
+                    backdropFilter: 'blur(10px)',
+                    overflow: 'hidden'
                   }}>
-                    {m.role === 'assistant' ? (
-                      <EnhancedMarkdownRenderer 
-                        content={m.text} 
-                        analysisData={m.analysisData || analysisData}
-                        onVisualizationClick={handleVisualizationClick}
-                      />
-                    ) : (
-                      m.text
+                    {/* Background pattern and water droplets for assistant messages */}
+                    {m.role === 'assistant' && (
+                      <>
+                        <div style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          background: `url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%231e40af' fill-opacity='0.02'%3E%3Cpath d='M10 10c0-5.5-4.5-10-10-10s-10 4.5-10 10 4.5 10 10 10 10-4.5 10-10z'/%3E%3C/g%3E%3C/svg%3E")`,
+                          pointerEvents: 'none'
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          top: '12px',
+                          left: '15px',
+                          width: '6px',
+                          height: '6px',
+                          background: 'rgba(30, 64, 175, 0.1)',
+                          borderRadius: '50%',
+                          pointerEvents: 'none'
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          top: '25px',
+                          left: '25px',
+                          width: '4px',
+                          height: '4px',
+                          background: 'rgba(14, 165, 233, 0.08)',
+                          borderRadius: '50%',
+                          pointerEvents: 'none'
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '20px',
+                          left: '20px',
+                          width: '5px',
+                          height: '5px',
+                          background: 'rgba(59, 130, 246, 0.12)',
+                          borderRadius: '50%',
+                          pointerEvents: 'none'
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          top: '18px',
+                          left: '8px',
+                          width: '3px',
+                          height: '3px',
+                          background: 'rgba(30, 64, 175, 0.15)',
+                          borderRadius: '50%',
+                          pointerEvents: 'none'
+                        }} />
+                      </>
                     )}
-                  </div>
+                    
+                    {/* Water droplet effects for user messages */}
+                    {m.role === 'user' && (
+                      <>
+                        <div style={{
+                          position: 'absolute',
+                          top: '10px',
+                          right: '15px',
+                          width: '8px',
+                          height: '8px',
+                          background: 'rgba(255, 255, 255, 0.3)',
+                          borderRadius: '50%',
+                          pointerEvents: 'none'
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          top: '20px',
+                          right: '25px',
+                          width: '5px',
+                          height: '5px',
+                          background: 'rgba(255, 255, 255, 0.2)',
+                          borderRadius: '50%',
+                          pointerEvents: 'none'
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          top: '15px',
+                          right: '8px',
+                          width: '3px',
+                          height: '3px',
+                          background: 'rgba(255, 255, 255, 0.4)',
+                          borderRadius: '50%',
+                          pointerEvents: 'none'
+                        }} />
+                        <div style={{
+                          position: 'absolute',
+                          bottom: '15px',
+                          right: '20px',
+                          width: '6px',
+                          height: '6px',
+                          background: 'rgba(255, 255, 255, 0.25)',
+                          borderRadius: '50%',
+                          pointerEvents: 'none'
+                        }} />
+                      </>
+                    )}
+                  {m.role === 'assistant' ? (
+                    <EnhancedMarkdownRenderer 
+                      content={m.text} 
+                      analysisData={m.analysisData || analysisData}
+                      onVisualizationClick={handleVisualizationClick}
+                    />
+                  ) : (
+                    m.text
+                  )}
+                </div>
 
                   {/* Icon for user messages */}
                   {m.role === 'user' && (
@@ -932,11 +1177,44 @@ function Chat1() {
 
         {/* Input Form */}
         <div style={{
-          backgroundColor: 'white',
-          borderTop: '1px solid #e2e8f0',
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.95) 100%)',
+          borderTop: '1px solid rgba(226, 232, 240, 0.5)',
           padding: '1rem 1.5rem',
-          flexShrink: 0
+          flexShrink: 0,
+          position: 'relative',
+          backdropFilter: 'blur(10px)'
         }}>
+          {/* Water droplets in input area */}
+          <div style={{
+            position: 'absolute',
+            top: '10px',
+            left: '20px',
+            width: '8px',
+            height: '8px',
+            background: 'rgba(14, 165, 233, 0.1)',
+            borderRadius: '50%',
+            pointerEvents: 'none'
+          }} />
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            right: '30px',
+            width: '6px',
+            height: '6px',
+            background: 'rgba(30, 64, 175, 0.08)',
+            borderRadius: '50%',
+            pointerEvents: 'none'
+          }} />
+          <div style={{
+            position: 'absolute',
+            bottom: '15px',
+            left: '50px',
+            width: '4px',
+            height: '4px',
+            background: 'rgba(59, 130, 246, 0.12)',
+            borderRadius: '50%',
+            pointerEvents: 'none'
+          }} />
           <form onSubmit={handleSend} style={{ maxWidth: '800px', margin: '0 auto' }}>
             <div style={{
               display: 'flex',
