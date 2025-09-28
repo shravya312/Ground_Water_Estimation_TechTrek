@@ -175,21 +175,41 @@ const MarkdownRenderer = ({ content }) => {
         </h2>
       )
     } else if (line.startsWith('# ')) {
-      renderedElements.push(
-        <h1 key={`h1-${i}`} style={{
-          fontSize: '1.5rem',
-          fontWeight: '800',
-          color: 'var(--color-text-primary)',
-          margin: '2.5rem 0 1.25rem 0',
-          paddingBottom: '1rem',
-          borderBottom: '4px solid var(--color-primary)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.5rem'
-        }}>
-          {line.substring(2)}
-        </h1>
-      )
+      const headerText = line.substring(2)
+      // Check if this is the JalSanchay title
+      if (headerText.includes('Welcome to **Jal**Sanchay')) {
+        renderedElements.push(
+          <h1 key={`h1-${i}`} style={{
+            fontSize: '1.5rem',
+            fontWeight: '800',
+            color: 'var(--color-text-primary)',
+            margin: '2.5rem 0 1.25rem 0',
+            paddingBottom: '1rem',
+            borderBottom: '4px solid var(--color-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            Welcome to <span style={{ color: '#1E40AF', fontWeight: '900' }}>Jal</span><span style={{ color: '#60A5FA', fontWeight: '900' }}>Sanchay</span>! 🌊
+          </h1>
+        )
+      } else {
+        renderedElements.push(
+          <h1 key={`h1-${i}`} style={{
+            fontSize: '1.5rem',
+            fontWeight: '800',
+            color: 'var(--color-text-primary)',
+            margin: '2.5rem 0 1.25rem 0',
+            paddingBottom: '1rem',
+            borderBottom: '4px solid var(--color-primary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            {headerText}
+          </h1>
+        )
+      }
     } else if (line.startsWith('- ')) {
       // Handle bullet points with enhanced styling
       const bulletText = line.substring(2)
