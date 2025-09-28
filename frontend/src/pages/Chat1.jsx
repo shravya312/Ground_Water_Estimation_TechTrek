@@ -14,7 +14,11 @@ import voiceService from '../services/voiceService'
 function Chat1() {
   console.log('Chat1 component loaded with voice features!')
   const [messages, setMessages] = useState([
-    { id: 1, role: 'assistant', text: 'Hi! Ask me anything about groundwater estimation.' },
+    { 
+      id: 1, 
+      role: 'assistant', 
+      text: '# Welcome to **Jal**Sanchay! 🌊\n\n**Your Smart Groundwater Assistant**\n\nI\'m here to help you with comprehensive groundwater analysis and estimation. Whether you\'re a researcher, environmental consultant, or water resource manager, I can assist you with:\n\n## 🎯 **Core Services**\n\n**📍 Location Intelligence**\nAnalyze groundwater potential, aquifer characteristics, and site-specific water resources\n\n**📊 Data Visualization**\nTransform complex groundwater data into interactive charts, maps, and reports\n\n**🔬 Advanced Estimation**\nApply scientific methods for groundwater recharge, storage, and flow calculations\n\n**💧 Quality Assessment**\nEvaluate water quality parameters, contamination risks, and treatment needs\n\n**🌱 Sustainability Planning**\nDevelop strategies for sustainable water resource management and conservation\n\n---\n\n**Ready to dive in?** Choose a service below or ask me anything about groundwater! 🚀' 
+    },
   ])
   const [input, setInput] = useState('')
   const [history, setHistory] = useState([])
@@ -491,17 +495,18 @@ function Chat1() {
                 <button 
                   onClick={handleClearHistory}
                   style={{
-                    padding: '0.25rem 0.5rem',
-                    backgroundColor: '#fef2f2',
-                    border: '1px solid #fecaca',
-                    color: '#dc2626',
+                    padding: '6px 12px',
+                    backgroundColor: '#E0F2FE',
+                    border: 'none',
+                    color: '#1E40AF',
                     fontSize: '0.75rem',
-                    borderRadius: '0.375rem',
+                    fontWeight: '600',
+                    borderRadius: '15px',
                     cursor: 'pointer',
                     transition: 'all 0.2s ease'
                   }}
-                  onMouseOver={(e) => e.target.style.backgroundColor = '#fee2e2'}
-                  onMouseOut={(e) => e.target.style.backgroundColor = '#fef2f2'}
+                  onMouseOver={(e) => e.target.style.backgroundColor = '#BAE6FD'}
+                  onMouseOut={(e) => e.target.style.backgroundColor = '#E0F2FE'}
                   title="Clear all chat history"
                 >
                   Clear
@@ -527,37 +532,28 @@ function Chat1() {
           
           <button 
             onClick={() => {
-              setMessages([{ id: 1, role: 'assistant', text: 'Hi! Ask me anything about groundwater estimation.' }])
+              setMessages([{ 
+                id: 1, 
+                role: 'assistant', 
+                text: '# Welcome to **Jal**Sanchay! 🌊\n\n**Your Smart Groundwater Assistant**\n\nI\'m here to help you with comprehensive groundwater analysis and estimation. Whether you\'re a researcher, environmental consultant, or water resource manager, I can assist you with:\n\n## 🎯 **Core Services**\n\n**📍 Location Intelligence**\nAnalyze groundwater potential, aquifer characteristics, and site-specific water resources\n\n**📊 Data Visualization**\nTransform complex groundwater data into interactive charts, maps, and reports\n\n**🔬 Advanced Estimation**\nApply scientific methods for groundwater recharge, storage, and flow calculations\n\n**💧 Quality Assessment**\nEvaluate water quality parameters, contamination risks, and treatment needs\n\n**🌱 Sustainability Planning**\nDevelop strategies for sustainable water resource management and conservation\n\n---\n\n**Ready to dive in?** Choose a service below or ask me anything about groundwater! 🚀' 
+              }])
               setSelectedHistoryIndex(-1)
               setCurrentConversationId(null)
             }}
             style={{
               width: '100%',
               padding: '0.75rem',
-              borderRadius: '0.5rem',
-              border: '1px solid #d1d5db',
-              backgroundColor: selectedHistoryIndex === -1 ? '#0ea5e9' : 'white',
-              color: selectedHistoryIndex === -1 ? 'white' : '#374151',
+              borderRadius: '20px',
+              border: 'none',
+              backgroundColor: '#E0F2FE',
+              color: '#1E40AF',
               fontSize: '0.875rem',
-              fontWeight: '500',
+              fontWeight: '600',
               cursor: 'pointer',
-              transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               gap: '0.5rem'
-            }}
-            onMouseOver={(e) => {
-              if (selectedHistoryIndex !== -1) {
-                e.target.style.backgroundColor = '#f3f4f6'
-                e.target.style.borderColor = '#9ca3af'
-              }
-            }}
-            onMouseOut={(e) => {
-              if (selectedHistoryIndex !== -1) {
-                e.target.style.backgroundColor = 'white'
-                e.target.style.borderColor = '#d1d5db'
-              }
             }}
           >
             <span style={{ fontSize: '1rem' }}>+</span>
@@ -596,7 +592,6 @@ function Chat1() {
                     margin: '0.25rem',
                     borderRadius: '0.5rem',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease',
                     backgroundColor: selectedHistoryIndex === idx ? '#0ea5e9' : 'transparent',
                     color: selectedHistoryIndex === idx ? 'white' : '#374151',
                     border: selectedHistoryIndex === idx ? 'none' : '1px solid transparent'
@@ -654,48 +649,20 @@ function Chat1() {
               <button
                 onClick={toggleSidebar}
                 style={{
-                  background: 'none',
+                  backgroundColor: '#E0F2FE',
                   border: 'none',
                   fontSize: '1.5rem',
-                  color: '#6b7280',
+                  color: '#1E40AF',
                   cursor: 'pointer',
                   padding: '0.5rem',
                   borderRadius: '0.5rem',
-                  marginRight: '0.75rem',
-                  transition: 'all 0.2s ease'
-                }}
-                onMouseOver={(e) => {
-                  e.target.style.color = '#0ea5e9'
-                  e.target.style.backgroundColor = '#f0f9ff'
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.color = '#6b7280'
-                  e.target.style.backgroundColor = 'transparent'
+                  marginRight: '0.75rem'
                 }}
                 title="Open sidebar"
               >
                 ☰
               </button>
             )}
-            <div style={{
-              width: '40px',
-              height: '40px',
-              background: 'linear-gradient(135deg, #0ea5e9, #1e40af)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <img 
-                src="/logo1.png" 
-                alt="Logo" 
-                style={{
-                  height: '24px',
-                  width: 'auto',
-                  objectFit: 'contain'
-                }}
-              />
-            </div>
             <div>
               <h1 style={{
                 fontSize: '1.25rem',
@@ -722,32 +689,25 @@ function Chat1() {
             <button 
               onClick={() => setShowLocationMap(true)}
               style={{
-                width: '40px',
-                height: '40px',
-                backgroundColor: '#f3f4f6',
-                border: '1px solid #d1d5db',
-                borderRadius: '0.5rem',
+                padding: '8px 16px',
+                backgroundColor: '#E0F2FE',
+                color: '#1E40AF',
+                border: 'none',
+                borderRadius: '20px',
                 cursor: 'pointer',
-                fontSize: '1.25rem',
-                transition: 'all 0.2s ease',
+                fontSize: '0.9rem',
+                fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
-              }}
-              onMouseOver={(e) => {
-                e.target.style.backgroundColor = '#e5e7eb'
-                e.target.style.borderColor = '#9ca3af'
-              }}
-              onMouseOut={(e) => {
-                e.target.style.backgroundColor = '#f3f4f6'
-                e.target.style.borderColor = '#d1d5db'
+                gap: '6px'
               }}
               title="Location Analysis"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: '#374151'}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path>
                 <circle cx="12" cy="10" r="3"></circle>
               </svg>
+              Location
             </button>
             <LanguageSelector 
               selectedLanguage={selectedLanguage}
@@ -757,62 +717,49 @@ function Chat1() {
             <button 
               onClick={() => setShowVisualizationPanel(true)}
               style={{
-                width: '40px',
-                height: '40px',
-                backgroundColor: '#f3f4f6',
-                border: '1px solid #d1d5db',
-                borderRadius: '0.5rem',
+                padding: '8px 16px',
+                backgroundColor: '#E0F2FE',
+                color: '#1E40AF',
+                border: 'none',
+                borderRadius: '20px',
                 cursor: 'pointer',
-                fontSize: '1.25rem',
-                transition: 'all 0.2s ease',
+                fontSize: '0.9rem',
+                fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
-              }}
-              onMouseOver={(e) => {
-                e.target.style.backgroundColor = '#e5e7eb'
-                e.target.style.borderColor = '#9ca3af'
-              }}
-              onMouseOut={(e) => {
-                e.target.style.backgroundColor = '#f3f4f6'
-                e.target.style.borderColor = '#d1d5db'
+                gap: '6px'
               }}
               title="Charts & Visualizations"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: '#374151'}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 3v18h18"></path>
                 <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path>
               </svg>
+              Charts
             </button>
             <button 
               onClick={() => signOut(auth)} 
               style={{
-                width: '40px',
-                height: '40px',
-                backgroundColor: '#ef4444',
-                border: '1px solid #dc2626',
-                borderRadius: '0.5rem',
+                padding: '8px 16px',
+                backgroundColor: '#E0F2FE',
+                color: '#1E40AF',
+                border: 'none',
+                borderRadius: '20px',
                 cursor: 'pointer',
-                fontSize: '1.25rem',
-                color: 'white',
-                transition: 'all 0.2s ease',
+                fontSize: '0.9rem',
+                fontWeight: '600',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
-              }}
-              onMouseOver={(e) => {
-                e.target.style.backgroundColor = '#dc2626'
-              }}
-              onMouseOut={(e) => {
-                e.target.style.backgroundColor = '#ef4444'
+                gap: '6px'
               }}
               title="Sign out"
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: 'white'}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
                 <polyline points="16,17 21,12 16,7"></polyline>
                 <line x1="21" y1="12" x2="9" y2="12"></line>
               </svg>
+              Sign Out
             </button>
           </div>
         </header>
@@ -826,32 +773,157 @@ function Chat1() {
         }}>
           <div style={{ maxWidth: '800px', margin: '0 auto', paddingBottom: '1rem' }}>
             {messages.map(m => (
-              <div key={m.id} style={{
-                display: 'flex',
-                justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
-                marginBottom: '1rem'
-              }}>
+              <div key={m.id}>
                 <div style={{
-                  maxWidth: '70%',
-                  padding: '0.75rem 1rem',
-                  borderRadius: m.role === 'user' ? '1rem 1rem 0.25rem 1rem' : '1rem 1rem 1rem 0.25rem',
-                  backgroundColor: m.role === 'user' ? '#0ea5e9' : 'white',
-                  color: m.role === 'user' ? 'white' : '#1e293b',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                  border: m.role === 'user' ? 'none' : '1px solid #e2e8f0',
-                  fontSize: '0.875rem',
-                  lineHeight: '1.5'
+                  display: 'flex',
+                  justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
+                  marginBottom: '1rem',
+                  alignItems: 'flex-start',
+                  gap: '0.5rem'
                 }}>
-                  {m.role === 'assistant' ? (
-                    <EnhancedMarkdownRenderer 
-                      content={m.text} 
-                      analysisData={m.analysisData || analysisData}
-                      onVisualizationClick={handleVisualizationClick}
-                    />
-                  ) : (
-                    m.text
+                  {/* Icon for assistant messages */}
+                  {m.role === 'assistant' && (
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      backgroundColor: '#E0F2FE',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: '0.25rem'
+                    }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1E40AF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <circle cx="12" cy="5" r="2"/>
+                        <path d="M12 7v4"/>
+                        <line x1="8" y1="16" x2="8" y2="16"/>
+                        <line x1="16" y1="16" x2="16" y2="16"/>
+                      </svg>
+                    </div>
+                  )}
+                  
+                  <div style={{
+                    maxWidth: '70%',
+                    padding: '0.75rem 1rem',
+                    borderRadius: m.role === 'user' ? '1rem 1rem 0.25rem 1rem' : '1rem 1rem 1rem 0.25rem',
+                    backgroundColor: m.role === 'user' ? '#0ea5e9' : 'white',
+                    color: m.role === 'user' ? 'white' : '#1e293b',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                    border: m.role === 'user' ? 'none' : '1px solid #e2e8f0',
+                    fontSize: '0.875rem',
+                    lineHeight: '1.5'
+                  }}>
+                    {m.role === 'assistant' ? (
+                      <EnhancedMarkdownRenderer 
+                        content={m.text} 
+                        analysisData={m.analysisData || analysisData}
+                        onVisualizationClick={handleVisualizationClick}
+                      />
+                    ) : (
+                      m.text
+                    )}
+                  </div>
+
+                  {/* Icon for user messages */}
+                  {m.role === 'user' && (
+                    <div style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: '50%',
+                      backgroundColor: '#0ea5e9',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                      marginTop: '0.25rem'
+                    }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                        <circle cx="12" cy="7" r="4"/>
+                      </svg>
+                    </div>
                   )}
                 </div>
+
+                {/* Suggestion prompts for the first assistant message */}
+                {m.role === 'assistant' && m.id === 1 && (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '0.75rem',
+                    marginLeft: '2.5rem',
+                    marginBottom: '1rem',
+                    maxWidth: '600px'
+                  }}>
+                    {[
+                      { text: 'Analyze groundwater in my area', icon: '📍', color: '#10B981' },
+                      { text: 'Show me groundwater data charts', icon: '📊', color: '#3B82F6' },
+                      { text: 'Explain estimation methods', icon: '🔬', color: '#8B5CF6' },
+                      { text: 'Check water quality parameters', icon: '💧', color: '#06B6D4' }
+                    ].map((suggestion, index) => (
+                      <div
+                        key={index}
+                        onClick={() => setInput(suggestion.text)}
+                        style={{
+                          padding: '1rem',
+                          backgroundColor: 'white',
+                          border: `2px solid ${suggestion.color}`,
+                          borderRadius: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s ease',
+                          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.75rem',
+                          position: 'relative',
+                          overflow: 'hidden'
+                        }}
+                        onMouseOver={(e) => {
+                          e.target.style.transform = 'translateY(-3px)'
+                          e.target.style.boxShadow = `0 8px 25px ${suggestion.color}20`
+                          e.target.style.borderColor = suggestion.color
+                        }}
+                        onMouseOut={(e) => {
+                          e.target.style.transform = 'translateY(0)'
+                          e.target.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)'
+                          e.target.style.borderColor = suggestion.color
+                        }}
+                      >
+                        <div style={{
+                          width: '40px',
+                          height: '40px',
+                          borderRadius: '50%',
+                          backgroundColor: `${suggestion.color}15`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '1.2rem',
+                          flexShrink: 0
+                        }}>
+                          {suggestion.icon}
+                        </div>
+                        <div style={{
+                          flex: 1,
+                          fontSize: '0.85rem',
+                          fontWeight: '600',
+                          color: '#374151',
+                          lineHeight: '1.4'
+                        }}>
+                          {suggestion.text}
+                        </div>
+                        <div style={{
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '50%',
+                          backgroundColor: suggestion.color,
+                          flexShrink: 0
+                        }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
             <div ref={bottomRef} />
@@ -927,26 +999,62 @@ function Chat1() {
                   }
                 }
               }}
-              className={`w-11 h-11 rounded-xl cursor-pointer flex items-center justify-center text-lg transition-all duration-300 ${
-                recording 
-                  ? 'border border-red-300 bg-red-50 text-red-600 animate-pulse' 
-                  : 'border border-gray-200 bg-gray-50 text-gray-600 hover:border-blue-500 hover:bg-blue-50'
-              }`}
+              style={{
+                width: '60px',
+                height: '50px',
+                borderRadius: '30px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1.125rem',
+                transition: 'all 0.3s ease',
+                backgroundColor: recording ? '#FF0000' : '#00BFFF',
+                color: '#FFFFFF',
+                border: 'none',
+                animation: recording ? 'pulse 2s infinite' : 'none',
+                boxShadow: '0 6px 12px rgba(0, 0, 0, 0.5)',
+                zIndex: 99999,
+                position: 'relative',
+                outline: 'none',
+                fontWeight: 'bold',
+                opacity: 1,
+                visibility: 'visible',
+                minWidth: '60px',
+                minHeight: '50px'
+              }}
               title={recording ? 'Stop voice input' : 'Start voice input'}
+              onMouseOver={(e) => {
+                if (!recording) {
+                  e.target.style.backgroundColor = '#B0E0E6'
+                  e.target.style.borderColor = 'transparent'
+                  e.target.style.transform = 'scale(1.05)'
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!recording) {
+                  e.target.style.backgroundColor = '#87CEEB'
+                  e.target.style.borderColor = 'transparent'
+                  e.target.style.transform = 'scale(1)'
+                }
+              }}
             >
               {recording ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="6" y="6" width="12" height="12" rx="2"/>
-                  <path d="M12 2v4"/>
-                  <path d="M12 18v4"/>
-                </svg>
+                <div style={{ 
+                  fontSize: '20px', 
+                  color: '#FFFFFF', 
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  lineHeight: '1'
+                }}>⏹</div>
               ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                  <line x1="12" y1="19" x2="12" y2="23"/>
-                  <line x1="8" y1="23" x2="16" y2="23"/>
-                </svg>
+                <div style={{ 
+                  fontSize: '20px', 
+                  color: '#FFFFFF', 
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  lineHeight: '1'
+                }}>🎤</div>
               )}
             </button>
               <input
@@ -975,33 +1083,58 @@ function Chat1() {
                 type="submit" 
                 disabled={sending} 
                 style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: '#0ea5e9',
-                  color: 'white',
+                  width: '50px',
+                  height: '40px',
+                  backgroundColor: '#87CEEB',
+                  color: '#000000',
                   border: 'none',
-                  borderRadius: '0.75rem',
+                  borderRadius: '25px',
                   cursor: sending ? 'not-allowed' : 'pointer',
-                  fontWeight: '600',
-                  fontSize: '0.875rem',
-                  transition: 'all 0.2s ease',
                   opacity: sending ? 0.6 : 1,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.5rem'
+                  justifyContent: 'center',
+                  fontSize: '1.125rem',
+                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+                  zIndex: 9999,
+                  position: 'relative',
+                  outline: 'none',
+                  fontWeight: 'bold',
+                  visibility: 'visible'
                 }}
                 onMouseOver={(e) => {
                   if (!sending) {
-                    e.target.style.backgroundColor = '#0284c7'
+                    e.target.style.backgroundColor = '#B0E0E6'
+                    e.target.style.borderColor = 'transparent'
+                    e.target.style.transform = 'scale(1.05)'
                   }
                 }}
                 onMouseOut={(e) => {
                   if (!sending) {
-                    e.target.style.backgroundColor = '#0ea5e9'
+                    e.target.style.backgroundColor = '#87CEEB'
+                    e.target.style.borderColor = 'transparent'
+                    e.target.style.transform = 'scale(1)'
                   }
                 }}
+                title={sending ? 'Sending...' : 'Send message'}
               >
-                {sending ? '⏳' : '→'}
-                {sending ? 'Sending' : 'Send'}
+                {sending ? (
+                  <div style={{ 
+                    fontSize: '24px', 
+                    color: '#000000', 
+                    fontWeight: 'bold',
+                    textAlign: 'center',
+                    lineHeight: '1'
+                  }}>⏳</div>
+                ) : (
+                  <div style={{ 
+                    fontSize: '24px', 
+                    color: '#000000', 
+                    fontWeight: 'bold',
+                    textAlign: 'center',
+                    lineHeight: '1'
+                  }}>➤</div>
+                )}
               </button>
             </div>
           </form>
@@ -1065,24 +1198,15 @@ function Chat1() {
                   width: '40px',
                   height: '40px',
                   borderRadius: '50%',
-                  background: 'none',
+                  backgroundColor: '#E0F2FE',
                   border: 'none',
                   fontSize: '1.25rem',
                   cursor: 'pointer',
-                  color: '#64748b',
+                  color: '#1E40AF',
                   padding: '8px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseOver={(e) => {
-                  e.target.style.backgroundColor = '#f1f5f9'
-                  e.target.style.color = '#0ea5e9'
-                }}
-                onMouseOut={(e) => {
-                  e.target.style.backgroundColor = 'transparent'
-                  e.target.style.color = '#64748b'
+                  justifyContent: 'center'
                 }}
               >
                 ✕
