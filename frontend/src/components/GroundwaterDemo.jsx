@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import ingresService from '../services/ingresService'
 import GroundwaterAnalysisCard from './GroundwaterAnalysisCard'
 import VisualizationModal from './VisualizationModal'
+import VisualizationPanel from './VisualizationPanel'
 
 const GroundwaterDemo = () => {
   const [demoData, setDemoData] = useState(null)
@@ -259,6 +260,10 @@ const GroundwaterDemo = () => {
             <GroundwaterAnalysisCard
               analysisData={demoData}
               onVisualizationClick={handleVisualizationClick}
+            />
+            <VisualizationPanel 
+              response={demoData?.response || ''}
+              onDownload={(vizType) => console.log('Download visualization:', vizType)}
             />
           </div>
         )}
