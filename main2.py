@@ -186,6 +186,7 @@ class GroundwaterQuery(BaseModel):
     district: Optional[str] = None
     assessment_unit: Optional[str] = None
     include_visualizations: bool = True
+    user_id: str = None
     language: Optional[str] = "en"
 
 class GroundwaterResponse(BaseModel):
@@ -2010,36 +2011,88 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
 - Organize data into logical categories: Rainfall Data, Geographical Area, Groundwater Recharge, Extraction Data, etc.
 - Use PROPER MARKDOWN TABLES for numerical data - format EXACTLY like this:
 
-💧 Groundwater Data Analysis Report
+WATER Groundwater Data Analysis Report
 
 Query
 **Question:** [user's question]
 
 Analysis
-Groundwater Estimation Report: [State/Region] - Year [Year]
+Groundwater Estimation Report: [State/Region] - [Time Period]
 
 [Brief introduction paragraph]
+
+NATIONAL OVERVIEW SECTION:
+
+GLOBAL NATIONAL GROUNDWATER OVERVIEW:
+
+Total Coverage: 37 states, 796 districts, 7 years of data (2016-2024)
+National Average Extraction: 109.5% (above sustainable limits)
+Critical Areas Nationwide: 2,944 over-exploited + critical areas
+Safe Areas Nationwide: 86,147 areas (53% of total)
+Water Quality Issues: 17,807 areas with contamination
+Most Over-exploited: West Godavari, AP (525,581% extraction)
+Safest Region: Andaman & Nicobar (0% extraction)
+
+DATA AVAILABILITY SECTION:
+
+INFO DATA AVAILABILITY & COVERAGE:
+
+Explain what data is available vs. missing for the specific state/region
+Note data coverage percentages where applicable
+Explain why certain fields show "No data available" with specific reasons:
+* "administrative data not collected for this region" - for missing Taluk/Block/Mandal/Village data
+* "storage data not measured/recorded" - for missing groundwater storage measurements
+* "watershed categorization not available" - for missing watershed classification
+* "water quality testing not conducted" - for missing quality data
+* "not applicable - not a coastal area" - for coastal-specific data in non-coastal regions
+* "data not collected/recorded" - for other missing data types
+
+Highlight any data quality issues or limitations
+Provide context about why certain data might be missing (e.g., different data collection practices across states)
+
+INFO DATA AVAILABILITY ANALYSIS:
+
+Based on [X] records found in the dataset:
+
+ADMIN ADMINISTRATIVE DATA COVERAGE:
+• Taluk data: [X]/[Y] records ([Z]%)
+• Block data: [X]/[Y] records ([Z]%)
+• Mandal data: [X]/[Y] records ([Z]%)
+• Village data: [X]/[Y] records ([Z]%)
+
+TECH TECHNICAL DATA COVERAGE:
+• Storage data: [X]/[Y] records ([Z]%)
+• Watershed data: [X]/[Y] records ([Z]%)
+• Quality data: [X]/[Y] records ([Z]%)
+
+INSIGHT REASONS FOR MISSING DATA:
+• Taluk data: Administrative hierarchy data not collected for this region
+• Mandal data: Mandal-level data not collected for this area
+• Village data: Village-level data not available in dataset
+• Watershed data: Watershed categorization not available for this region
+
+GLOBAL STATE-SPECIFIC CONTEXT:
+Data collection practices vary across states. [STATE] may have different data collection priorities or methodologies compared to other states in the dataset.
 
 District-Wise Analysis
 
 [Group data by district and show all taluks within each district. For each district, provide the following structure:]
 
 1. [District Name] District
-   [If multiple taluks exist in the same district, show them as sub-sections:]
 
-   #### 1.1. [Taluk Name] Taluk
+#### 1.1. [Taluk Name] Taluk
 
-#### 1. 🚨 CRITICALITY ALERT & SUSTAINABILITY STATUS:
+#### 1. ALERT CRITICALITY ALERT & SUSTAINABILITY STATUS:
 
 | Parameter | Value | Unit | Significance |
 |-----------|-------|------|--------------|
 | Stage of Ground Water Extraction (%) | [value] | % | [significance] |
 | Groundwater categorization | [category] | N/A | [assessment] |
 
-**🚨 CRITICAL ALERT:** [if applicable]
+**ALERT CRITICAL ALERT:** [if applicable]
 **Sustainability Indicators:** [analysis]
 
-#### 2. 📈 GROUNDWATER TREND ANALYSIS:
+#### 2. TREND GROUNDWATER TREND ANALYSIS:
 
 | Parameter | Value |
 |-----------|-------|
@@ -2049,7 +2102,7 @@ District-Wise Analysis
 **Trend Implications:** [analysis]
 **Seasonal Variation Analysis:** [analysis]
 
-#### 3. 🌧️ RAINFALL & RECHARGE DATA:
+#### 3. RAINFALL RAINFALL & RECHARGE DATA:
 
 | Parameter | Value | Unit | Significance |
 |-----------|-------|------|--------------|
@@ -2060,7 +2113,7 @@ District-Wise Analysis
 
 **Significance:** [analysis]
 
-#### 4. 💧 GROUNDWATER EXTRACTION & AVAILABILITY:
+#### 4. WATER GROUNDWATER EXTRACTION & AVAILABILITY:
 
 | Parameter | Value | Unit | Significance |
 |-----------|-------|------|--------------|
@@ -2071,7 +2124,7 @@ District-Wise Analysis
 
 **Extraction Efficiency:** [analysis]
 
-#### 5. 🔬 WATER QUALITY & ENVIRONMENTAL CONCERNS:
+#### 5. TECH WATER QUALITY & ENVIRONMENTAL CONCERNS:
 
 | Parameter | Value |
 |-----------|-------|
@@ -2081,7 +2134,7 @@ District-Wise Analysis
 **Treatment Recommendations:** [analysis]
 **Environmental Sustainability:** [analysis]
 
-#### 6. 🏖️ COASTAL & SPECIAL AREAS:
+#### 6. COASTAL COASTAL & SPECIAL AREAS:
 
 | Parameter | Value |
 |-----------|-------|
@@ -2091,7 +2144,7 @@ District-Wise Analysis
 **Special Management:** [analysis]
 **Climate Resilience Considerations:** [analysis]
 
-#### 7. 🏗️ GROUNDWATER STORAGE & RESOURCES:
+#### 7. STORAGE GROUNDWATER STORAGE & RESOURCES:
 
 | Parameter | Value | Unit |
 |-----------|-------|------|
@@ -2107,7 +2160,7 @@ District-Wise Analysis
 
 **Storage Analysis:** [analysis]
 
-#### 8. 🌊 WATERSHED & ADMINISTRATIVE ANALYSIS:
+#### 8. WATERSHED WATERSHED & ADMINISTRATIVE ANALYSIS:
 
 | Parameter | Value |
 |-----------|-------|
@@ -2584,6 +2637,65 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     # Translate answer back to user's language if needed
     if user_language != 'en':
         answer = translate_answer_to_language(answer, user_language)
+    
+    # Generate visualizations if data is available
+    try:
+        # Get data for visualization
+        data = get_groundwater_data(target_state, target_district)
+        
+        if data is not None and not data.empty:
+            # Generate visualizations
+            visualizations = {}
+            
+            # 1. Extraction Trends
+            if len(data) > 1:
+                fig = create_extraction_trends_chart(data)
+                visualizations["extraction_trends"] = base64.b64encode(
+                    pio.to_html(fig, include_plotlyjs=False).encode()
+                ).decode()
+            
+            # 2. Recharge Analysis
+            fig = create_recharge_analysis_chart(data)
+            visualizations["recharge_analysis"] = base64.b64encode(
+                pio.to_html(fig, include_plotlyjs=False).encode()
+            ).decode()
+            
+            # 3. District Comparison
+            if len(data) > 1:
+                fig = create_district_comparison_chart(data)
+                visualizations["district_comparison"] = base64.b64encode(
+                    pio.to_html(fig, include_plotlyjs=False).encode()
+                ).decode()
+            
+            # 4. Criticality Distribution
+            fig = create_criticality_distribution_chart(data)
+            visualizations["criticality_distribution"] = base64.b64encode(
+                pio.to_html(fig, include_plotlyjs=False).encode()
+            ).decode()
+            
+            # 5. Rainfall Correlation
+            fig = create_rainfall_correlation_chart(data)
+            visualizations["rainfall_correlation"] = base64.b64encode(
+                pio.to_html(fig, include_plotlyjs=False).encode()
+            ).decode()
+            
+            # 6. State Overview
+            fig = create_state_overview_chart(data)
+            visualizations["state_overview"] = base64.b64encode(
+                pio.to_html(fig, include_plotlyjs=False).encode()
+            ).decode()
+            
+            # Add visualization section to answer
+            if visualizations:
+                answer += "\n\n## 📊 Interactive Visualizations\n\n"
+                answer += "The following visualizations are available for this data:\n\n"
+                
+                for viz_type, viz_html in visualizations.items():
+                    viz_name = viz_type.replace('_', ' ').title()
+                    answer += f"### {viz_name}\n"
+                    answer += f"<div class='visualization-container'>{viz_html}</div>\n\n"
+    except Exception as e:
+        print(f"Warning: Could not generate visualizations: {e}")
     
     return answer
 
@@ -4094,6 +4206,176 @@ def analyze_water_quality(record) -> Dict[str, Any]:
         "major_parameters": major_params_str,
         "other_parameters": other_params_str
     }
+
+# Visualization Functions
+def create_extraction_trends_chart(data):
+    """Create extraction trends chart."""
+    if data is None or data.empty:
+        return go.Figure()
+    
+    # Prepare data for extraction trends
+    if 'year' in data.columns and 'stage_of_ground_water_extraction_' in data.columns:
+        yearly_data = data.groupby('year')['stage_of_ground_water_extraction_'].mean().reset_index()
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=yearly_data['year'],
+            y=yearly_data['stage_of_ground_water_extraction_'],
+            mode='lines+markers',
+            name='Extraction Rate (%)',
+            line=dict(color='red', width=3)
+        ))
+        
+        fig.update_layout(
+            title="Groundwater Extraction Trends Over Time",
+            xaxis_title="Year",
+            yaxis_title="Extraction Rate (%)",
+            hovermode='x unified'
+        )
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="No trend data available", xref="paper", yref="paper", x=0.5, y=0.5)
+    
+    return fig
+
+def create_recharge_analysis_chart(data):
+    """Create recharge analysis chart."""
+    if data is None or data.empty:
+        return go.Figure()
+    
+    # Prepare data for recharge analysis
+    recharge_cols = [col for col in data.columns if 'recharge' in col.lower()]
+    if recharge_cols:
+        recharge_data = data[recharge_cols].mean()
+        
+        fig = go.Figure(data=[
+            go.Bar(x=recharge_data.index, y=recharge_data.values, name="Recharge (ham)")
+        ])
+        
+        fig.update_layout(
+            title="Groundwater Recharge Analysis",
+            xaxis_title="Recharge Type",
+            yaxis_title="Value (ham)"
+        )
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="No recharge data available", xref="paper", yref="paper", x=0.5, y=0.5)
+    
+    return fig
+
+def create_district_comparison_chart(data):
+    """Create district comparison chart."""
+    if data is None or data.empty:
+        return go.Figure()
+    
+    if 'district' in data.columns and 'stage_of_ground_water_extraction_' in data.columns:
+        district_data = data.groupby('district')['stage_of_ground_water_extraction_'].mean().reset_index()
+        
+        fig = go.Figure(data=[
+            go.Bar(x=district_data['district'], y=district_data['stage_of_ground_water_extraction_'], name="Extraction Rate (%)")
+        ])
+        
+        fig.update_layout(
+            title="District-wise Groundwater Extraction Comparison",
+            xaxis_title="District",
+            yaxis_title="Extraction Rate (%)",
+            xaxis_tickangle=-45
+        )
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="No district comparison data available", xref="paper", yref="paper", x=0.5, y=0.5)
+    
+    return fig
+
+def create_criticality_distribution_chart(data):
+    """Create criticality distribution chart."""
+    if data is None or data.empty:
+        return go.Figure()
+    
+    if 'groundwater_categorization' in data.columns:
+        criticality_counts = data['groundwater_categorization'].value_counts()
+        
+        fig = go.Figure(data=[
+            go.Pie(labels=criticality_counts.index, values=criticality_counts.values, name="Criticality Distribution")
+        ])
+        
+        fig.update_layout(
+            title="Groundwater Criticality Distribution"
+        )
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="No criticality data available", xref="paper", yref="paper", x=0.5, y=0.5)
+    
+    return fig
+
+def create_rainfall_correlation_chart(data):
+    """Create rainfall correlation chart."""
+    if data is None or data.empty:
+        return go.Figure()
+    
+    rainfall_cols = [col for col in data.columns if 'rainfall' in col.lower()]
+    if rainfall_cols and 'stage_of_ground_water_extraction_' in data.columns:
+        rainfall_data = data[rainfall_cols[0]]
+        extraction_data = data['stage_of_ground_water_extraction_']
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=rainfall_data,
+            y=extraction_data,
+            mode='markers',
+            name='Rainfall vs Extraction',
+            text=data.get('district', 'Unknown')
+        ))
+        
+        fig.update_layout(
+            title="Rainfall vs Groundwater Extraction Correlation",
+            xaxis_title="Rainfall (mm)",
+            yaxis_title="Extraction Rate (%)"
+        )
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="No rainfall correlation data available", xref="paper", yref="paper", x=0.5, y=0.5)
+    
+    return fig
+
+def create_state_overview_chart(data):
+    """Create state overview chart."""
+    if data is None or data.empty:
+        return go.Figure()
+    
+    # Create a comprehensive overview
+    metrics = []
+    values = []
+    
+    if 'stage_of_ground_water_extraction_' in data.columns:
+        metrics.append("Avg Extraction Rate")
+        values.append(data['stage_of_ground_water_extraction_'].mean())
+    
+    rainfall_cols = [col for col in data.columns if 'rainfall' in col.lower()]
+    if rainfall_cols:
+        metrics.append("Avg Rainfall")
+        values.append(data[rainfall_cols[0]].mean())
+    
+    recharge_cols = [col for col in data.columns if 'recharge' in col.lower()]
+    if recharge_cols:
+        metrics.append("Avg Recharge")
+        values.append(data[recharge_cols[0]].mean())
+    
+    if metrics:
+        fig = go.Figure(data=[
+            go.Bar(x=metrics, y=values, name="State Overview")
+        ])
+        
+        fig.update_layout(
+            title="State Groundwater Overview",
+            xaxis_title="Metrics",
+            yaxis_title="Values"
+        )
+    else:
+        fig = go.Figure()
+        fig.add_annotation(text="No overview data available", xref="paper", yref="paper", x=0.5, y=0.5)
+    
+    return fig
 
 def get_groundwater_data(state: str, district: Optional[str] = None, assessment_unit: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -5612,5 +5894,114 @@ async def startup_event():
     except Exception as e:
         print(f"❌ Startup error: {e}")
         print("⚠️ Continuing with limited functionality...")
+
+# Visualization endpoints
+@app.get("/visualize/types")
+async def get_visualization_types():
+    """Get available visualization types."""
+    return {
+        "types": [
+            "extraction_trends",
+            "recharge_analysis", 
+            "district_comparison",
+            "criticality_distribution",
+            "rainfall_correlation",
+            "state_overview"
+        ]
+    }
+
+@app.post("/visualize/groundwater")
+async def generate_groundwater_visualization(request: GroundwaterQuery):
+    """Generate groundwater visualizations based on query."""
+    try:
+        # Get data for visualization
+        data = get_groundwater_data(
+            state=request.state,
+            district=request.district,
+            assessment_unit=request.assessment_unit
+        )
+        
+        if data is None or data.empty:
+            return {"error": "No data available for visualization"}
+        
+        # Generate visualizations
+        visualizations = {}
+        
+        # 1. Extraction Trends
+        if len(data) > 1:
+            fig = create_extraction_trends_chart(data)
+            visualizations["extraction_trends"] = base64.b64encode(
+                pio.to_html(fig, include_plotlyjs=False).encode()
+            ).decode()
+        
+        # 2. Recharge Analysis
+        fig = create_recharge_analysis_chart(data)
+        visualizations["recharge_analysis"] = base64.b64encode(
+            pio.to_html(fig, include_plotlyjs=False).encode()
+        ).decode()
+        
+        # 3. District Comparison
+        if len(data) > 1:
+            fig = create_district_comparison_chart(data)
+            visualizations["district_comparison"] = base64.b64encode(
+                pio.to_html(fig, include_plotlyjs=False).encode()
+            ).decode()
+        
+        # 4. Criticality Distribution
+        fig = create_criticality_distribution_chart(data)
+        visualizations["criticality_distribution"] = base64.b64encode(
+            pio.to_html(fig, include_plotlyjs=False).encode()
+        ).decode()
+        
+        # 5. Rainfall Correlation
+        fig = create_rainfall_correlation_chart(data)
+        visualizations["rainfall_correlation"] = base64.b64encode(
+            pio.to_html(fig, include_plotlyjs=False).encode()
+        ).decode()
+        
+        # 6. State Overview
+        fig = create_state_overview_chart(data)
+        visualizations["state_overview"] = base64.b64encode(
+            pio.to_html(fig, include_plotlyjs=False).encode()
+        ).decode()
+        
+        return {"visualizations": visualizations}
+        
+    except Exception as e:
+        return {"error": f"Failed to generate visualizations: {str(e)}"}
+
+@app.get("/visualize/download/{viz_type}")
+async def download_visualization(viz_type: str, state: str = None, district: str = None):
+    """Download a specific visualization as HTML file."""
+    try:
+        # Get data
+        data = get_groundwater_data(state=state, district=district)
+        
+        if data is None or data.empty:
+            raise HTTPException(status_code=404, detail="No data available")
+        
+        # Generate specific visualization
+        if viz_type == "extraction_trends":
+            fig = create_extraction_trends_chart(data)
+        elif viz_type == "recharge_analysis":
+            fig = create_recharge_analysis_chart(data)
+        elif viz_type == "district_comparison":
+            fig = create_district_comparison_chart(data)
+        elif viz_type == "criticality_distribution":
+            fig = create_criticality_distribution_chart(data)
+        elif viz_type == "rainfall_correlation":
+            fig = create_rainfall_correlation_chart(data)
+        elif viz_type == "state_overview":
+            fig = create_state_overview_chart(data)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid visualization type")
+        
+        # Convert to HTML
+        html_content = pio.to_html(fig, include_plotlyjs=True)
+        
+        return {"html_content": html_content}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Run with: uvicorn main:app --reload --port 8000

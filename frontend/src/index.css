@@ -23,30 +23,7 @@
     --color-success: #10B981;
     --color-warning: #F59E0B;
     --color-error: #EF4444;
-    /* Dark Navy Palette */
-    --color-navy-50: #F8FAFC;
-    --color-navy-100: #F1F5F9;
-    --color-navy-200: #E2E8F0;
-    --color-navy-300: #CBD5E1;
-    --color-navy-400: #94A3B8;
-    --color-navy-500: #64748B;
-    --color-navy-600: #475569;
-    --color-navy-700: #334155;
-    --color-navy-800: #1E293B;
-    --color-navy-900: #0F172A;
-    /* Dark Theme Colors */
-    --color-background: #0F172A;
-    --color-background-secondary: #1E293B;
-    --color-surface: #1E293B;
-    --color-surface-elevated: #334155;
-    --color-surface-hover: #475569;
-    --color-text-primary: #000000;
-    --color-text-secondary: #000000;
-    --color-text-muted: #94A3B8;
-    --color-border: #334155;
-    --color-border-light: #475569;
-    --color-border-dark: #1E293B;
-    /* Dark Shadows */
+    
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
     --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
@@ -197,9 +174,7 @@
     justify-content: center;
     gap: 12px;
     flex-wrap: wrap;
-}
-
-.btn-primary {
+}.btn-primary {
     background: var(--color-slate);
     border: 1px solid var(--color-blue-gray);
     color: #0f172a;
@@ -209,7 +184,7 @@
     display: inline-block;
     background: var(--color-blue-gray);
     border: 1px solid var(--color-slate);
-    color: #0f172a;
+    color: #6286ce;
     border-radius: 8px;
     padding: 0.6em 1.2em;
 }
@@ -1351,3 +1326,5 @@ select {
     opacity: 1;
     transform: scale(1);
 }
+
+/* Microphone and send button visibility - removed conflicting rules */
