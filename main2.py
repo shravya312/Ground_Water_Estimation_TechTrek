@@ -1405,6 +1405,62 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
         target_state = 'ODISHA'
         print(f"[DEBUG] Matched Odisha/Orissa -> ODISHA")
     
+    # Handle major cities to states mapping
+    elif 'chennai' in query_lower or 'madras' in query_lower:
+        target_state = 'TAMILNADU'
+        print(f"[DEBUG] Matched Chennai/Madras -> TAMILNADU")
+    elif 'mumbai' in query_lower or 'bombay' in query_lower:
+        target_state = 'MAHARASHTRA'
+        print(f"[DEBUG] Matched Mumbai/Bombay -> MAHARASHTRA")
+    elif 'bangalore' in query_lower or 'bengaluru' in query_lower:
+        target_state = 'KARNATAKA'
+        print(f"[DEBUG] Matched Bangalore/Bengaluru -> KARNATAKA")
+    elif 'kolkata' in query_lower or 'calcutta' in query_lower:
+        target_state = 'WEST BENGAL'
+        print(f"[DEBUG] Matched Kolkata/Calcutta -> WEST BENGAL")
+    elif 'delhi' in query_lower or 'new delhi' in query_lower:
+        target_state = 'DELHI'
+        print(f"[DEBUG] Matched Delhi/New Delhi -> DELHI")
+    elif 'hyderabad' in query_lower:
+        target_state = 'TELANGANA'
+        print(f"[DEBUG] Matched Hyderabad -> TELANGANA")
+    elif 'ahmedabad' in query_lower:
+        target_state = 'GUJARAT'
+        print(f"[DEBUG] Matched Ahmedabad -> GUJARAT")
+    elif 'jaipur' in query_lower:
+        target_state = 'RAJASTHAN'
+        print(f"[DEBUG] Matched Jaipur -> RAJASTHAN")
+    elif 'lucknow' in query_lower:
+        target_state = 'UTTAR PRADESH'
+        print(f"[DEBUG] Matched Lucknow -> UTTAR PRADESH")
+    elif 'bhopal' in query_lower:
+        target_state = 'MADHYA PRADESH'
+        print(f"[DEBUG] Matched Bhopal -> MADHYA PRADESH")
+    elif 'patna' in query_lower:
+        target_state = 'BIHAR'
+        print(f"[DEBUG] Matched Patna -> BIHAR")
+    elif 'bhubaneswar' in query_lower or 'cuttack' in query_lower:
+        target_state = 'ODISHA'
+        print(f"[DEBUG] Matched Bhubaneswar/Cuttack -> ODISHA")
+    elif 'raipur' in query_lower:
+        target_state = 'CHHATTISGARH'
+        print(f"[DEBUG] Matched Raipur -> CHHATTISGARH")
+    elif 'ranchi' in query_lower:
+        target_state = 'JHARKHAND'
+        print(f"[DEBUG] Matched Ranchi -> JHARKHAND")
+    elif 'guwahati' in query_lower:
+        target_state = 'ASSAM'
+        print(f"[DEBUG] Matched Guwahati -> ASSAM")
+    elif 'chandigarh' in query_lower:
+        target_state = 'CHANDIGARH'
+        print(f"[DEBUG] Matched Chandigarh -> CHANDIGARH")
+    elif 'pune' in query_lower or 'nagpur' in query_lower:
+        target_state = 'MAHARASHTRA'
+        print(f"[DEBUG] Matched {query_lower.split()[0].title()} -> MAHARASHTRA")
+    elif any(city in query_lower for city in ['coimbatore', 'madurai', 'tiruchirapalli', 'trichy', 'salem', 'tirunelveli', 'erode', 'tiruppur', 'vellore', 'thoothukudi', 'tuticorin', 'dindigul', 'thanjavur', 'tiruvannamalai', 'kanchipuram', 'cuddalore', 'karur', 'namakkal', 'tiruvallur', 'ranipet']):
+        target_state = 'TAMILNADU'
+        print(f"[DEBUG] Matched Tamil Nadu city -> TAMILNADU")
+    
     # Handle other common states
     elif 'karnataka' in query_lower:
         target_state = 'KARNATAKA'
