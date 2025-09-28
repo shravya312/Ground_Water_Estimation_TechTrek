@@ -33,6 +33,7 @@ function Chat1() {
   const [analysisData, setAnalysisData] = useState(null)
   const [recording, setRecording] = useState(false)
   const [liveTranscript, setLiveTranscript] = useState('')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const recognitionRef = useRef(null)
   const bottomRef = useRef(null)
 
@@ -69,6 +70,10 @@ function Chat1() {
   const handleVisualizationClick = (visualization) => {
     setSelectedVisualization(visualization)
     setShowVisualizationModal(true)
+  }
+
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen)
   }
 
   async function handleSend(e) {
@@ -363,74 +368,108 @@ function Chat1() {
       height: '100vh', 
       display: 'flex',
       backgroundColor: '#f8fafc',
-      fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      fontFamily: '"Lato", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       overflow: 'hidden'
     }}>
       {/* Sidebar */}
       <aside style={{
-        width: '320px',
+        width: sidebarOpen ? '320px' : '0px',
         backgroundColor: 'white',
         borderRight: '1px solid #e2e8f0',
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh'
+        height: '100vh',
+        transition: 'width 0.3s ease',
+        overflow: 'hidden'
       }}>
         {/* Sidebar Header */}
         <div style={{
           padding: '1.5rem',
           borderBottom: '1px solid #e2e8f0',
-          backgroundColor: '#f8fafc'
+          backgroundColor: '#f8fafc',
+          position: 'relative'
         }}>
-          <div style={{ 
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            marginBottom: '1rem'
-          }}>
-            {/* Logo */}
-            <div style={{ 
-              width: '40px',
-              height: '40px',
-              backgroundColor: '#1e3a8a',
+          {/* Close Button */}
+          <button
+            onClick={toggleSidebar}
+            style={{
+              position: 'absolute',
+              top: '1rem',
+              right: '1rem',
+              background: 'none',
+              border: 'none',
+              fontSize: '1.5rem',
+              color: '#6b7280',
+              cursor: 'pointer',
+              padding: '0.25rem',
               borderRadius: '50%',
+              width: '32px',
+              height: '32px',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseOver={(e) => {
+              e.target.style.color = '#ef4444'
+              e.target.style.backgroundColor = 'rgba(239, 68, 68, 0.1)'
+            }}
+            onMouseOut={(e) => {
+              e.target.style.color = '#6b7280'
+              e.target.style.backgroundColor = 'transparent'
+            }}
+            title="Close sidebar"
+          >
+            ✕
+          </button>
+            <div style={{ 
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              marginBottom: '1rem'
             }}>
-              <img 
-                src="/logo1.png" 
-                alt="Logo" 
-                style={{
-                  height: '24px',
-                  width: 'auto',
-                  objectFit: 'contain'
-                }}
-              />
-            </div>
-            <div>
-              <h3 style={{ 
-                fontSize: '0.875rem',
-                fontWeight: '600',
-                color: '#1e293b',
-                margin: 0
+              {/* Logo */}
+              <div style={{ 
+                width: '40px',
+                height: '40px',
+                backgroundColor: '#1e3a8a',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}>
-                Groundwater Assistant
-              </h3>
-              <p style={{ 
-                fontSize: '0.75rem',
-                color: '#64748b',
-                margin: 0
-              }}>
-                AI-Powered Analysis
-              </p>
+                <img 
+                  src="/logo1.png" 
+                  alt="Logo" 
+                  style={{
+                    height: '24px',
+                    width: 'auto',
+                    objectFit: 'contain'
+                  }}
+                />
+              </div>
+              <div>
+                <h3 style={{ 
+                  fontSize: '1rem',
+                  fontWeight: '800',
+                  margin: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.125rem'
+                }}>
+                  <span style={{ 
+                    color: '#1e40af',
+                    fontWeight: '900',
+                    textShadow: '0 2px 4px rgba(30, 64, 175, 0.3)'
+                  }}>Jal</span>
+                  <span style={{ 
+                    color: '#0ea5e9',
+                    fontWeight: '800',
+                    textShadow: '0 2px 4px rgba(14, 165, 233, 0.3)'
+                  }}>Sanchay</span>
+                </h3>
+              </div>
             </div>
-          </div>
-          
-          <LanguageSelector 
-            selectedLanguage={selectedLanguage}
-            onLanguageChange={setSelectedLanguage}
-            className="sidebar-language-selector"
-          />
         </div>
         
         {/* Chat Controls */}
@@ -610,6 +649,34 @@ function Chat1() {
           flexShrink: 0
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {/* Menu Button */}
+            {!sidebarOpen && (
+              <button
+                onClick={toggleSidebar}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.5rem',
+                  color: '#6b7280',
+                  cursor: 'pointer',
+                  padding: '0.5rem',
+                  borderRadius: '0.5rem',
+                  marginRight: '0.75rem',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.target.style.color = '#0ea5e9'
+                  e.target.style.backgroundColor = '#f0f9ff'
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.color = '#6b7280'
+                  e.target.style.backgroundColor = 'transparent'
+                }}
+                title="Open sidebar"
+              >
+                ☰
+              </button>
+            )}
             <div style={{
               width: '40px',
               height: '40px',
@@ -617,97 +684,121 @@ function Chat1() {
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '1.25rem',
-              color: 'white'
+              justifyContent: 'center'
             }}>
-              💧
+              <img 
+                src="/logo1.png" 
+                alt="Logo" 
+                style={{
+                  height: '24px',
+                  width: 'auto',
+                  objectFit: 'contain'
+                }}
+              />
             </div>
             <div>
               <h1 style={{
-                fontSize: '1.125rem',
-                fontWeight: '600',
-                color: '#1e293b',
-                margin: 0
+                fontSize: '1.25rem',
+                fontWeight: '800',
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.125rem'
               }}>
-                Groundwater Assistant
+                <span style={{ 
+                  color: '#1e40af',
+                  fontWeight: '900',
+                  textShadow: '0 2px 4px rgba(30, 64, 175, 0.3)'
+                }}>Jal</span>
+                <span style={{ 
+                  color: '#0ea5e9',
+                  fontWeight: '800',
+                  textShadow: '0 2px 4px rgba(14, 165, 233, 0.3)'
+                }}>Sanchay</span>
               </h1>
-              <p style={{
-                fontSize: '0.75rem',
-                color: '#64748b',
-                margin: 0
-              }}>
-                AI-Powered • Voice Enabled
-              </p>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button 
               onClick={() => setShowLocationMap(true)}
               style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#f8fafc',
-                border: '1px solid #e2e8f0',
+                width: '40px',
+                height: '40px',
+                backgroundColor: '#f3f4f6',
+                border: '1px solid #d1d5db',
                 borderRadius: '0.5rem',
                 cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                color: '#374151',
+                fontSize: '1.25rem',
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem'
+                justifyContent: 'center'
               }}
               onMouseOver={(e) => {
-                e.target.style.backgroundColor = '#f1f5f9'
-                e.target.style.borderColor = '#cbd5e1'
+                e.target.style.backgroundColor = '#e5e7eb'
+                e.target.style.borderColor = '#9ca3af'
               }}
               onMouseOut={(e) => {
-                e.target.style.backgroundColor = '#f8fafc'
-                e.target.style.borderColor = '#e2e8f0'
+                e.target.style.backgroundColor = '#f3f4f6'
+                e.target.style.borderColor = '#d1d5db'
               }}
+              title="Location Analysis"
             >
-              📍 Location
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: '#374151'}}>
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"></path>
+                <circle cx="12" cy="10" r="3"></circle>
+              </svg>
             </button>
+            <LanguageSelector 
+              selectedLanguage={selectedLanguage}
+              onLanguageChange={setSelectedLanguage}
+              className="header-language-selector"
+            />
             <button 
               onClick={() => setShowVisualizationPanel(true)}
               style={{
-                padding: '0.5rem 1rem',
-                backgroundColor: '#f8fafc',
-                border: '1px solid #e2e8f0',
+                width: '40px',
+                height: '40px',
+                backgroundColor: '#f3f4f6',
+                border: '1px solid #d1d5db',
                 borderRadius: '0.5rem',
                 cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500',
-                color: '#374151',
+                fontSize: '1.25rem',
                 transition: 'all 0.2s ease',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '0.5rem'
+                justifyContent: 'center'
               }}
               onMouseOver={(e) => {
-                e.target.style.backgroundColor = '#f1f5f9'
-                e.target.style.borderColor = '#cbd5e1'
+                e.target.style.backgroundColor = '#e5e7eb'
+                e.target.style.borderColor = '#9ca3af'
               }}
               onMouseOut={(e) => {
-                e.target.style.backgroundColor = '#f8fafc'
-                e.target.style.borderColor = '#e2e8f0'
+                e.target.style.backgroundColor = '#f3f4f6'
+                e.target.style.borderColor = '#d1d5db'
               }}
+              title="Charts & Visualizations"
             >
-              📊 Charts
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: '#374151'}}>
+                <path d="M3 3v18h18"></path>
+                <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"></path>
+              </svg>
             </button>
             <button 
               onClick={() => signOut(auth)} 
               style={{
-                padding: '0.5rem 1rem',
+                width: '40px',
+                height: '40px',
                 backgroundColor: '#ef4444',
                 border: '1px solid #dc2626',
                 borderRadius: '0.5rem',
                 cursor: 'pointer',
-                fontSize: '0.875rem',
-                fontWeight: '500',
+                fontSize: '1.25rem',
                 color: 'white',
-                transition: 'all 0.2s ease'
+                transition: 'all 0.2s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
               onMouseOver={(e) => {
                 e.target.style.backgroundColor = '#dc2626'
@@ -715,8 +806,13 @@ function Chat1() {
               onMouseOut={(e) => {
                 e.target.style.backgroundColor = '#ef4444'
               }}
+              title="Sign out"
             >
-              Sign out
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: 'white'}}>
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16,17 21,12 16,7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
             </button>
           </div>
         </header>
@@ -838,7 +934,20 @@ function Chat1() {
               }`}
               title={recording ? 'Stop voice input' : 'Start voice input'}
             >
-              {recording ? '🛑' : '🎤'}
+              {recording ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="6" y="6" width="12" height="12" rx="2"/>
+                  <path d="M12 2v4"/>
+                  <path d="M12 18v4"/>
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/>
+                  <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+              )}
             </button>
               <input
                 value={recording ? liveTranscript : input}
@@ -939,9 +1048,16 @@ function Chat1() {
                 fontSize: '1.25rem',
                 fontWeight: 'bold',
                 color: '#1e293b',
-                margin: 0
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem'
               }}>
-                📍 Location-Based Groundwater Analysis
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{color: '#374151'}}>
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                  <circle cx="12" cy="10" r="3"></circle>
+                </svg>
+                Location-Based Groundwater Analysis
               </h2>
               <button 
                 onClick={() => setShowLocationMap(false)}

@@ -907,6 +907,53 @@ html {
 }
 
 
+/* Ensure SVG icons are visible */
+
+svg {
+    color: inherit !important;
+}
+
+
+/* Chat1.jsx icon styling */
+
+.chat1-icon {
+    stroke: #374151 !important;
+    fill: none !important;
+}
+
+.chat1-icon-white {
+    stroke: white !important;
+    fill: none !important;
+}
+
+
+/* Landing page hero text override - maximum specificity */
+
+.landing-hero p,
+div .landing-hero p,
+body .landing-hero p,
+html body .landing-hero p {
+    color: white !important;
+}
+
+
+/* Additional override for Landing page hero section */
+
+.hero-section p,
+.hero-section .landing-hero,
+div.hero-section p {
+    color: white !important;
+}
+
+
+/* ID-specific override for maximum specificity */
+
+#hero-description,
+#hero-title {
+    color: white !important;
+}
+
+
 /* Override any conflicting styles */
 
 div,

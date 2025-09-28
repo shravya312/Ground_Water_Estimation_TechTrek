@@ -10,6 +10,7 @@ function Landing() {
   const [testimonialIndex, setTestimonialIndex] = useState(0)
   const [openFaq, setOpenFaq] = useState(null)
   const [visibleElements, setVisibleElements] = useState(new Set())
+  const [isScrolled, setIsScrolled] = useState(false)
   const elementRefs = useRef({})
 
   async function handleGoogleSignIn() {
@@ -80,6 +81,17 @@ function Landing() {
     }
   }, [])
 
+  // Scroll event listener for header behavior
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+      setIsScrolled(scrollTop > 50) // Trigger separation after 50px scroll
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
   return (
       <div style={{ 
         minHeight: '100vh', 
@@ -88,12 +100,26 @@ function Landing() {
         backgroundColor: 'white',
         fontFamily: '"Lato", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
       }}>
+      <style>
+        {`
+          #hero-description,
+          #hero-title {
+            color: white !important;
+          }
+          .landing-hero {
+            color: white !important;
+          }
+          .hero-section {
+            color: white !important;
+          }
+        `}
+      </style>
 
       {/* Header */}
       <header style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
+        background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.9) 48%, rgba(240, 249, 255, 0.9) 52%)',
+        backdropFilter: 'blur(15px)',
+        WebkitBackdropFilter: 'blur(15px)',
         color: '#333',
         padding: '0.5rem 1rem',
         position: 'fixed',
@@ -101,7 +127,9 @@ function Landing() {
         left: 0,
         right: 0,
         zIndex: 1000,
-        borderBottom: '1px solid rgba(229, 231, 235, 0.3)'
+        borderBottom: isScrolled ? '1px solid rgba(59, 130, 246, 0.2)' : 'none',
+        boxShadow: isScrolled ? '0 4px 20px rgba(59, 130, 246, 0.1)' : 'none',
+        transition: 'all 0.3s ease'
       }}>
         <div style={{ 
           margin: '0',
@@ -171,7 +199,8 @@ function Landing() {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '2rem 1rem',
-        marginTop: '80px'
+        marginTop: isScrolled ? '100px' : '80px',
+        transition: 'margin-top 0.3s ease'
       }}>
         <div style={{
           width: '100%',
@@ -204,21 +233,21 @@ function Landing() {
             borderRadius: window.innerWidth > 768 ? '32px' : '24px',
             zIndex: 1
           }}></div>
-          <h1 style={{
-            fontSize: window.innerWidth > 1200 ? '4.5rem' : window.innerWidth > 1024 ? '4rem' : window.innerWidth > 768 ? '3.5rem' : window.innerWidth > 640 ? '3rem' : '2.5rem',
+            <h1 id="hero-title" className="landing-hero hero-section" style={{
+              fontSize: window.innerWidth > 1200 ? '3rem' : window.innerWidth > 1024 ? '2.75rem' : window.innerWidth > 768 ? '2.5rem' : window.innerWidth > 640 ? '2.25rem' : '2rem',
             fontWeight: 'bold',
-            color: 'white',
+              color: 'white',
             lineHeight: 1.1,
             margin: '0 0 1.5rem 0',
             position: 'relative',
-            zIndex: 2,
-            textShadow: '2px 2px 4px rgba(0, 0, 0, 0.7)'
+              zIndex: 2,
+              textShadow: '2px 2px 4px rgba(0, 0, 0, 0.7)'
           }}>
             Ground Water Companion
           </h1>
-          <p style={{
+          <p id="hero-description" className="landing-hero hero-section" style={{
             fontSize: window.innerWidth > 1200 ? '1.5rem' : window.innerWidth > 1024 ? '1.375rem' : window.innerWidth > 768 ? '1.25rem' : window.innerWidth > 640 ? '1.125rem' : '1rem',
-            color: 'white',
+            color: 'white !important',
             lineHeight: 1.5,
             margin: '0 0 2.5rem 0',
             maxWidth: window.innerWidth > 768 ? '900px' : '700px',
@@ -282,7 +311,7 @@ function Landing() {
             data-animate
             style={{ textAlign: 'center', marginBottom: '4rem' }}
           >
-            <h2 style={{
+          <h2 style={{ 
               fontSize: '3rem',
               fontWeight: 'bold',
               color: '#0ea5e9',
@@ -562,7 +591,7 @@ function Landing() {
                 </div>
                 <h4 style={{
                   fontSize: '1.25rem',
-                  fontWeight: 'bold',
+            fontWeight: 'bold',
                   color: '#1e293b',
                   margin: '0 0 1rem 0'
                 }}>
@@ -641,17 +670,17 @@ function Landing() {
                 fontWeight: 'bold',
                 margin: '0 0 0.25rem 0',
                 color: '#0ea5e9'
-              }}>
-                Central Ground Water Board
-              </h2>
-              <p style={{ 
-                fontSize: window.innerWidth > 768 ? '0.875rem' : '0.75rem',
+          }}>
+            Central Ground Water Board
+          </h2>
+          <p style={{ 
+            fontSize: window.innerWidth > 768 ? '0.875rem' : '0.75rem',
                 margin: '0 0 0.125rem 0',
                 color: '#666'
-              }}>
-                Department of WR, RD & GR
-              </p>
-              <p style={{ 
+          }}>
+            Department of WR, RD & GR
+          </p>
+          <p style={{ 
                 fontSize: window.innerWidth > 768 ? '0.75rem' : '0.65rem',
                 margin: '0',
                 color: '#888'
@@ -722,7 +751,7 @@ function Landing() {
               </p>
               <p style={{
                 fontSize: '0.875rem',
-                margin: '0',
+            margin: '0',
                 color: '#333',
                 fontWeight: '500'
               }}>
