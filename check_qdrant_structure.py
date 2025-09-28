@@ -3,7 +3,7 @@
 Check the Qdrant collection structure and data
 """
 
-import main
+import main2
 
 def check_qdrant_structure():
     """Check the Qdrant collection structure and sample data."""
@@ -11,10 +11,10 @@ def check_qdrant_structure():
     print("=" * 50)
     
     # Initialize components
-    main._init_components()
+    main2._init_components()
     
     # Get collection info
-    info = main._qdrant_client.get_collection('groundwater_excel_collection')
+    info = main2._qdrant_client.get_collection('groundwater_excel_collection')
     print(f"📊 Collection Name: groundwater_excel_collection")
     print(f"📊 Vector Size: {info.config.params.vectors.size}")
     print(f"📊 Distance Metric: {info.config.params.vectors.distance}")
@@ -24,7 +24,7 @@ def check_qdrant_structure():
     print("\n📋 Sample Data in Collection:")
     print("-" * 50)
     
-    results = main._qdrant_client.scroll(
+    results = main2._qdrant_client.scroll(
         collection_name='groundwater_excel_collection', 
         limit=10, 
         with_payload=True
@@ -72,7 +72,7 @@ def check_qdrant_structure():
     
     # Check all data for states
     print(f"\n🔍 Checking all data for states...")
-    all_results = main._qdrant_client.scroll(
+    all_results = main2._qdrant_client.scroll(
         collection_name='groundwater_excel_collection', 
         limit=1000, 
         with_payload=True

@@ -56,6 +56,12 @@ COLLECTION_NAME = "ingris_groundwater_collection"
 VECTOR_SIZE = 768  # Upgraded to support better embedding models
 MIN_SIMILARITY_SCORE = 0.1  # Lowered threshold to find more relevant results
 
+# --- Advanced RAG Configuration ---
+HYBRID_ALPHA = 0.6  # Weight for dense vs sparse retrieval (0.6 = 60% dense, 40% sparse)
+RERANK_TOP_K = 10  # Number of chunks to re-rank
+QUERY_EXPANSION_TERMS = 3  # Number of terms to add via query expansion
+RERANK_MIN_SIMILARITY = 0.1  # Minimum similarity for reranking (start low, improve gradually)
+
 # --- Language Support ---
 SUPPORTED_LANGUAGES = {
     'en': 'English',
@@ -98,10 +104,10 @@ _chromadb_client = None
 _chromadb_collection = None
 _model = None
 _nlp = None
-_gemini_model = None
-_master_df = None
 _bm25_model = None
 _all_chunks = None
+_gemini_model = None
+_master_df = None
 _bm25_df = None
 _translator_model = None
 _translator_tokenizer = None
@@ -1293,6 +1299,303 @@ def expand_query(query, num_terms=3):
         print(f"Error expanding query: {e}")
         return ""
 
+# ===== ADVANCED RAG FUNCTIONS =====
+
+def tokenize_text_for_bm25(text):
+    """Tokenize text for BM25 processing."""
+    if not text:
+        return []
+    # Simple tokenization - can be enhanced with proper NLP preprocessing
+    return text.lower().split()
+
+def load_bm25_model():
+    """Load or create BM25 model from all available chunks."""
+    global _bm25_model, _all_chunks
+    
+    if _bm25_model is not None and _all_chunks is not None:
+        return _bm25_model, _all_chunks
+    
+    try:
+        # Try to get all chunks from Qdrant first
+        if _qdrant_client:
+            scroll_result = _qdrant_client.scroll(
+                collection_name=COLLECTION_NAME,
+                limit=100000,
+                with_payload=True,
+                with_vectors=False
+            )
+            all_chunks = [point.payload.get('combined_text', '') for point in scroll_result[0] if point.payload.get('combined_text')]
+        else:
+            # Fallback to ChromaDB
+            if _chromadb_collection:
+                results = _chromadb_collection.get(limit=100000, include=['metadatas'])
+                all_chunks = [metadata.get('combined_text', '') for metadata in results['metadatas'] if metadata.get('combined_text')]
+            else:
+                all_chunks = []
+        
+        if all_chunks:
+            tokenized_chunks = [tokenize_text_for_bm25(chunk) for chunk in all_chunks]
+            _bm25_model = BM25Okapi(tokenized_chunks)
+            _all_chunks = all_chunks
+            print(f"✅ BM25 model initialized with {len(all_chunks)} chunks")
+        else:
+            print("⚠️ No chunks found for BM25 initialization")
+            _bm25_model = None
+            _all_chunks = []
+        
+        return _bm25_model, _all_chunks
+        
+    except Exception as e:
+        print(f"❌ Error loading BM25 model: {e}")
+        _bm25_model = None
+        _all_chunks = []
+        return None, []
+
+def hybrid_search(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
+    """Perform hybrid search combining dense and sparse retrieval."""
+    try:
+        print(f"🔍 Starting hybrid search for: {query_text}")
+        
+        # Initialize components
+        _init_components()
+        
+        # --- Dense Retrieval (Vector Search) ---
+        print("📊 Performing dense retrieval...")
+        dense_results = []
+        
+        # Try Qdrant first
+        if _qdrant_client:
+            try:
+                query_vector = _model.encode([query_text])[0]
+                qdrant_results = _qdrant_client.search(
+                    collection_name=COLLECTION_NAME,
+                    query_vector=query_vector,
+                    limit=50,  # Get more candidates for hybrid scoring
+                    score_threshold=RERANK_MIN_SIMILARITY
+                )
+                dense_results = [{"score": hit.score, "data": hit.payload} for hit in qdrant_results]
+                print(f"✅ Dense retrieval: {len(dense_results)} results from Qdrant")
+            except Exception as e:
+                print(f"⚠️ Qdrant dense search failed: {e}")
+        
+        # Fallback to ChromaDB
+        if not dense_results and _chromadb_collection:
+            try:
+                chromadb_results = _chromadb_collection.query(
+                    query_texts=[query_text],
+                    n_results=50,
+                    include=['metadatas', 'distances']
+                )
+                if chromadb_results['metadatas'] and chromadb_results['metadatas'][0]:
+                    dense_results = []
+                    for i, (metadata, distance) in enumerate(zip(chromadb_results['metadatas'][0], chromadb_results['distances'][0])):
+                        score = 1 - distance  # Convert distance to similarity
+                        if score >= RERANK_MIN_SIMILARITY:
+                            dense_results.append({"score": score, "data": metadata})
+                    print(f"✅ Dense retrieval: {len(dense_results)} results from ChromaDB")
+            except Exception as e:
+                print(f"⚠️ ChromaDB dense search failed: {e}")
+        
+        # --- Sparse Retrieval (BM25) ---
+        print("📝 Performing sparse retrieval...")
+        sparse_results = []
+        
+        bm25_model, all_chunks = load_bm25_model()
+        if bm25_model and all_chunks:
+            try:
+                tokenized_query = tokenize_text_for_bm25(query_text)
+                bm25_scores = bm25_model.get_scores(tokenized_query)
+                
+                # Create sparse results
+                for i, score in enumerate(bm25_scores):
+                    if score > 0:  # Only consider chunks with positive BM25 score
+                        chunk_text = all_chunks[i]
+                        # Try to find corresponding metadata
+                        metadata = {"combined_text": chunk_text}
+                        sparse_results.append({"score": score, "data": metadata})
+                
+                print(f"✅ Sparse retrieval: {len(sparse_results)} results from BM25")
+            except Exception as e:
+                print(f"⚠️ BM25 sparse search failed: {e}")
+        
+        # --- Hybrid Scoring ---
+        print("🔄 Performing hybrid scoring...")
+        combined_scores = {}
+        alpha = HYBRID_ALPHA  # Weight for dense vs sparse
+        
+        # Normalize scores
+        max_dense_score = max([r['score'] for r in dense_results]) if dense_results else 1.0
+        max_sparse_score = max([r['score'] for r in sparse_results]) if sparse_results else 1.0
+        
+        # Combine dense results
+        for result in dense_results:
+            chunk_key = result['data'].get('combined_text', str(result['data']))
+            normalized_score = result['score'] / max_dense_score if max_dense_score > 0 else 0
+            combined_scores[chunk_key] = alpha * normalized_score
+        
+        # Combine sparse results
+        for result in sparse_results:
+            chunk_key = result['data'].get('combined_text', str(result['data']))
+            normalized_score = result['score'] / max_sparse_score if max_sparse_score > 0 else 0
+            if chunk_key in combined_scores:
+                combined_scores[chunk_key] += (1 - alpha) * normalized_score
+            else:
+                combined_scores[chunk_key] = (1 - alpha) * normalized_score
+        
+        # Sort by combined score
+        sorted_results = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
+        
+        # Convert back to result format
+        final_results = []
+        for chunk_key, score in sorted_results[:50]:  # Top 50 for reranking
+            # Find the original result with this chunk
+            for result in dense_results + sparse_results:
+                if result['data'].get('combined_text', str(result['data'])) == chunk_key:
+                    final_results.append({"score": score, "data": result['data']})
+                    break
+        
+        print(f"✅ Hybrid search completed: {len(final_results)} results")
+        return final_results
+        
+    except Exception as e:
+        print(f"❌ Hybrid search failed: {e}")
+        # Fallback to regular search
+        return search_excel_chunks(query_text, year, target_state, target_district, extracted_parameters)
+
+def advanced_rerank(query_text, candidate_results, top_k=5):
+    """Advanced reranking using semantic similarity and additional factors."""
+    if not candidate_results or not _model:
+        return candidate_results[:top_k] if candidate_results else []
+    
+    try:
+        print(f"🔄 Advanced reranking {len(candidate_results)} candidates...")
+        
+        # Extract text from candidates
+        candidate_texts = []
+        for result in candidate_results:
+            text = result['data'].get('combined_text', '')
+            if not text:
+                # Try to construct text from available fields
+                data = result['data']
+                text_parts = []
+                for key, value in data.items():
+                    if isinstance(value, (str, int, float)) and value and key not in ['id', 'source_file']:
+                        text_parts.append(f"{key}: {value}")
+                text = " ".join(text_parts)
+            candidate_texts.append(text)
+        
+        if not candidate_texts:
+            return candidate_results[:top_k]
+        
+        # Encode query and candidates
+        query_embedding = _model.encode([query_text])[0]
+        candidate_embeddings = _model.encode(candidate_texts)
+        
+        # Calculate cosine similarity
+        query_norm = np.linalg.norm(query_embedding)
+        candidate_norms = np.linalg.norm(candidate_embeddings, axis=1)
+        
+        if query_norm == 0:
+            return candidate_results[:top_k]
+        
+        # Avoid division by zero
+        candidate_norms[candidate_norms == 0] = 1e-12
+        
+        similarities = np.dot(candidate_embeddings, query_embedding) / (candidate_norms * query_norm)
+        
+        # Apply minimum similarity threshold
+        valid_indices = similarities >= RERANK_MIN_SIMILARITY
+        
+        if not np.any(valid_indices):
+            print(f"⚠️ No candidates meet minimum similarity threshold ({RERANK_MIN_SIMILARITY})")
+            return candidate_results[:top_k]
+        
+        # Create scored results
+        scored_results = []
+        for i, (result, similarity) in enumerate(zip(candidate_results, similarities)):
+            if valid_indices[i]:
+                # Combine original score with semantic similarity
+                combined_score = 0.7 * similarity + 0.3 * result.get('score', 0)
+                scored_results.append((result, combined_score))
+        
+        # Sort by combined score
+        scored_results.sort(key=lambda x: x[1], reverse=True)
+        
+        # Return top_k results
+        reranked_results = [result for result, score in scored_results[:top_k]]
+        
+        print(f"✅ Advanced reranking completed: {len(reranked_results)} results")
+        return reranked_results
+        
+    except Exception as e:
+        print(f"❌ Advanced reranking failed: {e}")
+        return candidate_results[:top_k]
+
+def enhanced_query_expansion(query, num_terms=3):
+    """Enhanced query expansion with domain-specific terms."""
+    if not _gemini_model:
+        return query
+    
+    try:
+        # Domain-specific prompt for groundwater data
+        prompt = f"""
+        You are a groundwater expert. Expand the following query with {num_terms} related technical terms, synonyms, or alternative phrasings that would help find relevant groundwater data.
+        
+        Focus on terms related to:
+        - Groundwater extraction, recharge, availability
+        - Administrative divisions (states, districts, taluks)
+        - Water quality, sustainability, over-exploitation
+        - Rainfall, geographical areas, environmental flows
+        - Technical parameters and measurements
+        
+        Query: {query}
+        
+        Output only the terms, separated by commas, no other text.
+        Related terms:"""
+        
+        response = _gemini_model.generate_content(prompt)
+        expanded_terms = [term.strip() for term in response.text.strip().split(',') if term.strip()]
+        
+        if expanded_terms:
+            expanded_query = f"{query} {' '.join(expanded_terms)}"
+            print(f"✅ Query expanded: {expanded_query}")
+            return expanded_query
+        else:
+            return query
+            
+    except Exception as e:
+        print(f"⚠️ Query expansion failed: {e}")
+        return query
+
+def advanced_search_with_rag(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
+    """Complete advanced RAG pipeline with query expansion, hybrid search, and reranking."""
+    try:
+        print(f"🚀 Starting advanced RAG pipeline for: {query_text}")
+        
+        # Step 1: Query Expansion
+        print("📝 Step 1: Query expansion...")
+        expanded_query = enhanced_query_expansion(query_text, QUERY_EXPANSION_TERMS)
+        
+        # Step 2: Hybrid Search
+        print("🔍 Step 2: Hybrid search...")
+        candidate_results = hybrid_search(expanded_query, year, target_state, target_district, extracted_parameters)
+        
+        if not candidate_results:
+            print("⚠️ No results from hybrid search, trying fallback...")
+            candidate_results = search_excel_chunks(query_text, year, target_state, target_district, extracted_parameters)
+        
+        # Step 3: Advanced Reranking
+        print("🔄 Step 3: Advanced reranking...")
+        final_results = advanced_rerank(query_text, candidate_results, RERANK_TOP_K)
+        
+        print(f"✅ Advanced RAG pipeline completed: {len(final_results)} final results")
+        return final_results
+        
+    except Exception as e:
+        print(f"❌ Advanced RAG pipeline failed: {e}")
+        # Fallback to regular search
+        return search_excel_chunks(query_text, year, target_state, target_district, extracted_parameters)
+
 def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None, chat_history=None, extracted_parameters=None, user_language='en'):
     """Use Gemini to answer the question based on structured Excel data with multilingual support."""
     if not query or not context_data:
@@ -1883,87 +2186,80 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     target_state = None
     target_district = None
     
-    # Load INGRIS data for state extraction (use the same data as Qdrant)
+    # Use improved location detection with synonyms and fuzzy matching
     try:
-        ingris_df = pd.read_csv("ingris_rag_ready_complete.csv", skiprows=1)
-        # Clean column names to match the structure
-        ingris_df.columns = [
-            'serial_number', 'state', 'district', 'island', 'watershed_district',
-            'rainfall_mm', 'total_geographical_area_ha', 'ground_water_recharge_ham',
-            'inflows_and_outflows_ham', 'annual_ground_water_recharge_ham',
-            'environmental_flows_ham', 'annual_extractable_ground_water_resource_ham',
-            'ground_water_extraction_for_all_uses_ham', 'stage_of_ground_water_extraction_',
-            'categorization_of_assessment_unit', 'pre_monsoon_of_gw_trend',
-            'post_monsoon_of_gw_trend', 'allocation_of_ground_water_resource_for_domestic_utilisation_for_projected_year_2025_ham',
-            'net_annual_ground_water_availability_for_future_use_ham', 'quality_tagging',
-            'additional_potential_resources_under_specific_conditionsham', 'coastal_areas',
-            'instorage_unconfined_ground_water_resourcesham', 'total_ground_water_availability_in_unconfined_aquifier_ham',
-            'dynamic_confined_ground_water_resourcesham', 'instorage_confined_ground_water_resourcesham',
-            'total_confined_ground_water_resources_ham', 'dynamic_semi_confined_ground_water_resources_ham',
-            'instorage_semi_confined_ground_water_resources_ham', 'total_semiconfined_ground_water_resources_ham',
-            'total_ground_water_availability_in_the_area_ham', 'source_file', 'year',
-            'tehsil', 'taluk', 'block', 'valley', 'assessment_unit', 'mandal',
-            'village', 'watershed_category', 'firka', 'combined_text'
-        ]
+        from location_synonyms import extract_location_from_query
         
-        unique_states = ingris_df['state'].dropna().unique().tolist()
-        unique_districts = ingris_df['district'].dropna().unique().tolist()
-        
-        # Try to find state with fuzzy matching
-        for state in unique_states:
-            if pd.notna(state):
-                # Exact match
-                if re.search(r'\b' + re.escape(str(state)) + r'\b', translated_query, re.IGNORECASE):
-                    target_state = state
-                    break
-                # Partial match
-                elif str(state).lower() in translated_query.lower():
-                    target_state = state
-                    break
+        # Load INGRIS data for state extraction (use the same data as Qdrant)
+        try:
+            ingris_df = pd.read_csv("ingris_rag_ready_complete.csv", skiprows=1)
+            # Clean column names to match the structure
+            ingris_df.columns = [
+                'serial_number', 'state', 'district', 'island', 'watershed_district',
+                'rainfall_mm', 'total_geographical_area_ha', 'ground_water_recharge_ham',
+                'inflows_and_outflows_ham', 'annual_ground_water_recharge_ham',
+                'environmental_flows_ham', 'annual_extractable_ground_water_resource_ham',
+                'ground_water_extraction_for_all_uses_ham', 'stage_of_ground_water_extraction_',
+                'categorization_of_assessment_unit', 'pre_monsoon_of_gw_trend',
+                'post_monsoon_of_gw_trend', 'allocation_of_ground_water_resource_for_domestic_utilisation_for_projected_year_2025_ham',
+                'net_annual_ground_water_availability_for_future_use_ham', 'quality_tagging',
+                'additional_potential_resources_under_specific_conditionsham', 'coastal_areas',
+                'instorage_unconfined_ground_water_resourcesham', 'total_ground_water_availability_in_unconfined_aquifier_ham',
+                'dynamic_confined_ground_water_resourcesham', 'instorage_confined_ground_water_resourcesham',
+                'total_confined_ground_water_resources_ham', 'dynamic_semi_confined_ground_water_resources_ham',
+                'instorage_semi_confined_ground_water_resources_ham', 'total_semiconfined_ground_water_resources_ham',
+                'total_ground_water_availability_in_the_area_ham', 'source_file', 'year',
+                'tehsil', 'taluk', 'block', 'valley', 'assessment_unit', 'mandal',
+                'village', 'watershed_category', 'firka', 'combined_text'
+            ]
+            
+            unique_states = ingris_df['state'].dropna().unique().tolist()
+            unique_districts = ingris_df['district'].dropna().unique().tolist()
+            
+            # Use improved location detection
+            target_state, target_district = extract_location_from_query(
+                translated_query, unique_states, unique_districts, ingris_df
+            )
+            
+        except Exception as e:
+            print(f"Warning: Could not load INGRIS data for state extraction: {e}")
+            # Fallback to master_df if INGRIS data fails
+            if _master_df is not None:
+                unique_states = _master_df['STATE'].unique().tolist()
+                unique_districts = _master_df['DISTRICT'].unique().tolist()
+                
+                # Use improved location detection with master data
+                target_state, target_district = extract_location_from_query(
+                    translated_query, unique_states, unique_districts, _master_df
+                )
+                
+    except ImportError:
+        print("Warning: location_synonyms module not found, falling back to basic matching")
+        # Fallback to original logic if improved module is not available
+        if _master_df is not None:
+            unique_states = _master_df['STATE'].unique().tolist()
+            unique_districts = _master_df['DISTRICT'].unique().tolist()
+            
+            # Basic matching (original logic)
+            for state in unique_states:
+                if pd.notna(state):
+                    if re.search(r'\b' + re.escape(str(state)) + r'\b', translated_query, re.IGNORECASE):
+                        target_state = state
+                        break
+                    elif str(state).lower() in translated_query.lower():
+                        target_state = state
+                        break
 
-        if target_state:
-            districts_in_state = ingris_df[ingris_df['state'] == target_state]['district'].unique().tolist()
-            for district in districts_in_state:
-                if pd.notna(district):
-                    # Exact match
-                    if re.search(r'\b' + re.escape(str(district)) + r'\b', translated_query, re.IGNORECASE):
-                        target_district = district
-                        break
-                    # Partial match
-                    elif str(district).lower() in translated_query.lower():
-                        target_district = district
-                        break
-    except Exception as e:
-        print(f"Warning: Could not load INGRIS data for state extraction: {e}")
-        # Fallback to master_df if INGRIS data fails
-    if _master_df is not None:
-        unique_states = _master_df['STATE'].unique().tolist()
-        unique_districts = _master_df['DISTRICT'].unique().tolist()
-        
-        # Try to find state with fuzzy matching
-        for state in unique_states:
-            if pd.notna(state):
-                # Exact match
-                if re.search(r'\b' + re.escape(str(state)) + r'\b', translated_query, re.IGNORECASE):
-                    target_state = state
-                    break
-                # Partial match
-                elif str(state).lower() in translated_query.lower():
-                    target_state = state
-                    break
-
-        if target_state:
-            districts_in_state = _master_df[_master_df['STATE'] == target_state]['DISTRICT'].unique().tolist()
-            for district in districts_in_state:
-                if pd.notna(district):
-                    # Exact match
-                    if re.search(r'\b' + re.escape(str(district)) + r'\b', translated_query, re.IGNORECASE):
-                        target_district = district
-                        break
-                    # Partial match
-                    elif str(district).lower() in translated_query.lower():
-                        target_district = district
-                        break
+            if target_state:
+                districts_in_state = _master_df[_master_df['STATE'] == target_state]['DISTRICT'].unique().tolist()
+                for district in districts_in_state:
+                    if pd.notna(district):
+                        if re.search(r'\b' + re.escape(str(district)) + r'\b', translated_query, re.IGNORECASE):
+                            target_district = district
+                            break
+                        elif str(district).lower() in translated_query.lower():
+                            target_district = district
+                            break
     
     # Enhanced NLP for extracting specific groundwater parameters
     extracted_parameters = {}
@@ -1993,32 +2289,31 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
                             except ValueError:
                                 continue
     
-    expanded_terms = expand_query(translated_query)
-    expanded_query_text = f"{translated_query} {expanded_terms}".strip()
-    
-    candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
+    # Use advanced RAG pipeline with hybrid search, reranking, and query expansion
+    print("🚀 Using Advanced RAG Pipeline...")
+    candidate_results = advanced_search_with_rag(translated_query, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
     
     # If no results found with location filters, try without location filters
     if not candidate_results:
-        candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
-    
-    # If still no results, try with just the basic query without expansion
-    if not candidate_results:
-        candidate_results = search_excel_chunks(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+        print("⚠️ No results with location filters, trying without...")
+        candidate_results = advanced_search_with_rag(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
     # If still no results, try with original query (before translation)
     if not candidate_results:
-        candidate_results = search_excel_chunks(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+        print("⚠️ No results with translated query, trying original...")
+        candidate_results = advanced_search_with_rag(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
     # If still no results, try with common groundwater keywords
     if not candidate_results:
+        print("⚠️ No results found, trying fallback search...")
         groundwater_query = "groundwater estimation data analysis"
         candidate_results = search_excel_chunks(groundwater_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
     if not candidate_results:
         return "I couldn't find enough relevant information in the groundwater data to answer your question."
     
-    re_ranked_results = re_rank_chunks(expanded_query_text, candidate_results, top_k=5)
+    # Results are already reranked by the advanced RAG pipeline
+    re_ranked_results = candidate_results
     if not re_ranked_results:
         return "I couldn't find enough relevant information in the groundwater data to answer your question."
     
@@ -2941,6 +3236,311 @@ async def get_available_states():
             "states": available_states,
             "count": len(available_states)
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dropdown/states")
+async def get_dropdown_states():
+    """Get list of all available states for dropdown."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        states = _master_df['STATE'].dropna().unique().tolist()
+        states = [s for s in states if s and str(s).strip()]
+        states.sort()
+        
+        return {
+            "success": True,
+            "states": states,
+            "count": len(states)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dropdown/districts")
+async def get_dropdown_districts():
+    """Get list of all available districts for dropdown."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        districts = _master_df['DISTRICT'].dropna().unique().tolist()
+        districts = [d for d in districts if d and str(d).strip()]
+        districts.sort()
+        
+        return {
+            "success": True,
+            "districts": districts,
+            "count": len(districts)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dropdown/districts/{state}")
+async def get_districts_by_state(state: str):
+    """Get districts for a specific state."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Find districts for the given state
+        state_data = _master_df[_master_df['STATE'].str.upper() == state.upper()]
+        if state_data.empty:
+            raise HTTPException(status_code=404, detail=f"No data found for state: {state}")
+        
+        districts = state_data['DISTRICT'].dropna().unique().tolist()
+        districts = [d for d in districts if d and str(d).strip()]
+        districts.sort()
+        
+        return {
+            "success": True,
+            "state": state,
+            "districts": districts,
+            "count": len(districts)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dropdown/hierarchical")
+async def get_hierarchical_data():
+    """Get hierarchical data (states with their districts)."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        hierarchical_data = {}
+        states = _master_df['STATE'].dropna().unique().tolist()
+        states = [s for s in states if s and str(s).strip()]
+        states.sort()
+        
+        for state in states:
+            state_data = _master_df[_master_df['STATE'] == state]
+            districts = state_data['DISTRICT'].dropna().unique().tolist()
+            districts = [d for d in districts if d and str(d).strip()]
+            districts.sort()
+            
+            hierarchical_data[state] = {
+                "districts": districts,
+                "district_count": len(districts)
+            }
+        
+        return {
+            "success": True,
+            "hierarchical": hierarchical_data,
+            "total_states": len(states),
+            "total_districts": sum(len(data["districts"]) for data in hierarchical_data.values())
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Enhanced Dropdown API with Taluk Support
+@app.get("/dropdown/taluks")
+async def get_dropdown_taluks():
+    """Get list of all available taluks for dropdown."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Load enhanced data for taluk information
+        try:
+            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
+            taluks = enhanced_df['taluk'].dropna().unique().tolist()
+            taluks = [t for t in taluks if t and str(t).strip()]
+            taluks.sort()
+        except FileNotFoundError:
+            # Fallback to master data if enhanced data not available
+            taluks = []
+        
+        return {
+            "success": True,
+            "taluks": taluks,
+            "count": len(taluks)
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dropdown/taluks/{state}")
+async def get_taluks_by_state(state: str):
+    """Get taluks for a specific state."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Load enhanced data for taluk information
+        try:
+            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
+            state_data = enhanced_df[enhanced_df['state'].str.upper() == state.upper()]
+            if state_data.empty:
+                raise HTTPException(status_code=404, detail=f"No data found for state: {state}")
+            
+            taluks = state_data['taluk'].dropna().unique().tolist()
+            taluks = [t for t in taluks if t and str(t).strip()]
+            taluks.sort()
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Enhanced data not available")
+        
+        return {
+            "success": True,
+            "state": state,
+            "taluks": taluks,
+            "count": len(taluks)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dropdown/taluks/{state}/{district}")
+async def get_taluks_by_district(state: str, district: str):
+    """Get taluks for a specific district in a state."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Load enhanced data for taluk information
+        try:
+            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
+            district_data = enhanced_df[
+                (enhanced_df['state'].str.upper() == state.upper()) & 
+                (enhanced_df['district'].str.upper() == district.upper())
+            ]
+            if district_data.empty:
+                raise HTTPException(status_code=404, detail=f"No data found for district: {district} in state: {state}")
+            
+            taluks = district_data['taluk'].dropna().unique().tolist()
+            taluks = [t for t in taluks if t and str(t).strip()]
+            taluks.sort()
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Enhanced data not available")
+        
+        return {
+            "success": True,
+            "state": state,
+            "district": district,
+            "taluks": taluks,
+            "count": len(taluks)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dropdown/enhanced-hierarchical")
+async def get_enhanced_hierarchical_data():
+    """Get enhanced hierarchical data (states with their districts and taluks)."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Load enhanced data for taluk information
+        try:
+            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
+            
+            hierarchical_data = {}
+            states = enhanced_df['state'].dropna().unique().tolist()
+            states = [s for s in states if s and str(s).strip()]
+            states.sort()
+            
+            for state in states:
+                state_data = enhanced_df[enhanced_df['state'] == state]
+                
+                # Get districts
+                districts = state_data['district'].dropna().unique().tolist()
+                districts = [d for d in districts if d and str(d).strip()]
+                districts.sort()
+                
+                # Get taluks
+                taluks = state_data['taluk'].dropna().unique().tolist()
+                taluks = [t for t in taluks if t and str(t).strip()]
+                taluks.sort()
+                
+                hierarchical_data[state] = {
+                    "districts": districts,
+                    "district_count": len(districts),
+                    "taluks": taluks,
+                    "taluk_count": len(taluks)
+                }
+            
+            return {
+                "success": True,
+                "hierarchical": hierarchical_data,
+                "total_states": len(states),
+                "total_districts": sum(len(data["districts"]) for data in hierarchical_data.values()),
+                "total_taluks": sum(len(data["taluks"]) for data in hierarchical_data.values())
+            }
+        except FileNotFoundError:
+            # Fallback to basic hierarchical data
+            return await get_hierarchical_data()
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/dropdown/taluk-data/{state}/{district}/{taluk}")
+async def get_taluk_data(state: str, district: str, taluk: str):
+    """Get detailed data for a specific taluk."""
+    try:
+        _init_components()
+        if _master_df is None:
+            raise HTTPException(status_code=400, detail="No data loaded")
+        
+        # Load enhanced data for taluk information
+        try:
+            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
+            
+            # Find data for the specific taluk
+            taluk_data = enhanced_df[
+                (enhanced_df['state'].str.upper() == state.upper()) & 
+                (enhanced_df['district'].str.upper() == district.upper()) &
+                (enhanced_df['taluk'].str.upper() == taluk.upper())
+            ]
+            
+            if taluk_data.empty:
+                raise HTTPException(status_code=404, detail=f"No data found for taluk: {taluk} in district: {district}, state: {state}")
+            
+            # Get the first record (assuming all records for a taluk have similar data)
+            record = taluk_data.iloc[0]
+            
+            return {
+                "success": True,
+                "state": state,
+                "district": district,
+                "taluk": taluk,
+                "data": {
+                    "stage_of_ground_water_extraction": record.get('stage_of_ground_water_extraction_', 'N/A'),
+                    "categorization": record.get('categorization_of_assessment_unit', 'N/A'),
+                    "rainfall_mm": record.get('rainfall_mm', 'N/A'),
+                    "ground_water_recharge_ham": record.get('ground_water_recharge_ham', 'N/A'),
+                    "ground_water_extraction_ham": record.get('ground_water_extraction_for_all_uses_ham', 'N/A'),
+                    "pre_monsoon_trend": record.get('pre_monsoon_of_gw_trend', 'N/A'),
+                    "post_monsoon_trend": record.get('post_monsoon_of_gw_trend', 'N/A'),
+                    "quality_tagging": record.get('quality_tagging', 'N/A'),
+                    "assessment_unit": record.get('assessment_unit', 'N/A'),
+                    "year": record.get('year', 'N/A')
+                }
+            }
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Enhanced data not available")
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -4179,7 +4779,122 @@ def get_state_from_coordinates(lat: float, lng: float) -> str:
     print(f"No state found for coordinates: lat={lat}, lng={lng}")
     return None
 
+# RAG Configuration Endpoints
+@app.get("/rag/config")
+async def get_rag_config():
+    """Get current RAG configuration parameters."""
+    return {
+        "hybrid_alpha": HYBRID_ALPHA,
+        "rerank_top_k": RERANK_TOP_K,
+        "query_expansion_terms": QUERY_EXPANSION_TERMS,
+        "rerank_min_similarity": RERANK_MIN_SIMILARITY,
+        "min_similarity_score": MIN_SIMILARITY_SCORE
+    }
+
+@app.post("/rag/config")
+async def update_rag_config(config: dict):
+    """Update RAG configuration parameters."""
+    global HYBRID_ALPHA, RERANK_TOP_K, QUERY_EXPANSION_TERMS, RERANK_MIN_SIMILARITY, MIN_SIMILARITY_SCORE
+    
+    if "hybrid_alpha" in config:
+        HYBRID_ALPHA = max(0.0, min(1.0, config["hybrid_alpha"]))
+    if "rerank_top_k" in config:
+        RERANK_TOP_K = max(1, min(50, config["rerank_top_k"]))
+    if "query_expansion_terms" in config:
+        QUERY_EXPANSION_TERMS = max(0, min(10, config["query_expansion_terms"]))
+    if "rerank_min_similarity" in config:
+        RERANK_MIN_SIMILARITY = max(0.0, min(1.0, config["rerank_min_similarity"]))
+    if "min_similarity_score" in config:
+        MIN_SIMILARITY_SCORE = max(0.0, min(1.0, config["min_similarity_score"]))
+    
+    return {
+        "message": "RAG configuration updated successfully",
+        "new_config": {
+            "hybrid_alpha": HYBRID_ALPHA,
+            "rerank_top_k": RERANK_TOP_K,
+            "query_expansion_terms": QUERY_EXPANSION_TERMS,
+            "rerank_min_similarity": RERANK_MIN_SIMILARITY,
+            "min_similarity_score": MIN_SIMILARITY_SCORE
+        }
+    }
+
 # INGRES ChatBOT Endpoints
+@app.post("/ingres/advanced-query", response_model=GroundwaterResponse)
+async def advanced_query_groundwater_data(request: GroundwaterQuery):
+    """
+    Advanced query endpoint using hybrid search, reranking, and query expansion.
+    This endpoint demonstrates the enhanced RAG capabilities.
+    """
+    try:
+        print(f"🚀 Advanced RAG Query: {request.query}")
+        
+        # Use the enhanced answer_query function for consistent formatting
+        user_lang = request.language or detect_language(request.query)
+        analysis_text = answer_query(request.query, user_lang, request.user_id)
+        
+        # Extract state from query if not provided
+        if not request.state:
+            # Try to extract state from query text using Gemini
+            if _gemini_model:
+                try:
+                    prompt = f"""
+                    Extract the Indian state name from this query: "{request.query}"
+                    
+                    Return only the state name, nothing else.
+                    If no state is mentioned, return "None".
+                    """
+                    response = _gemini_model.generate_content(prompt)
+                    extracted_state = response.text.strip()
+                    if extracted_state and extracted_state.lower() != "none":
+                        request.state = extracted_state
+                except Exception as e:
+                    print(f"Error extracting state from query: {e}")
+        
+        # If still no state, try to find a state in the query text
+        if not request.state:
+            query_lower = request.query.lower()
+            indian_states = [
+                "andhra pradesh", "arunachal pradesh", "assam", "bihar", "chhattisgarh",
+                "goa", "gujarat", "haryana", "himachal pradesh", "jharkhand", "karnataka",
+                "kerala", "madhya pradesh", "maharashtra", "manipur", "meghalaya", "mizoram",
+                "nagaland", "odisha", "punjab", "rajasthan", "sikkim", "tamil nadu",
+                "telangana", "tripura", "uttar pradesh", "uttarakhand", "west bengal",
+                "delhi", "chandigarh", "puducherry", "jammu and kashmir", "ladakh"
+            ]
+            
+            for state in indian_states:
+                if state in query_lower:
+                    request.state = state.title()
+                    break
+        
+        return GroundwaterResponse(
+            success=True,
+            response=analysis_text,
+            state=request.state,
+            district=request.district,
+            year=request.year,
+            language=user_lang,
+            query=request.query,
+            user_id=request.user_id,
+            timestamp=pd.Timestamp.now().isoformat(),
+            rag_method="advanced_hybrid_rerank"
+        )
+        
+    except Exception as e:
+        print(f"❌ Advanced query error: {str(e)}")
+        return GroundwaterResponse(
+            success=False,
+            response=f"Error processing advanced query: {str(e)}",
+            state=request.state,
+            district=request.district,
+            year=request.year,
+            language=request.language or 'en',
+            query=request.query,
+            user_id=request.user_id,
+            timestamp=pd.Timestamp.now().isoformat(),
+            rag_method="advanced_hybrid_rerank"
+        )
+
 @app.post("/ingres/query", response_model=GroundwaterResponse)
 async def query_groundwater_data(request: GroundwaterQuery):
     """
