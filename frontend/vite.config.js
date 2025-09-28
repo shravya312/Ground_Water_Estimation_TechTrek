@@ -10,6 +10,11 @@ export default defineConfig({
                 changeOrigin: true,
                 secure: false,
             },
+            '/ask-formatted': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+                secure: false,
+            },
             '/analyze-location': {
                 target: 'http://localhost:8000',
                 changeOrigin: true,

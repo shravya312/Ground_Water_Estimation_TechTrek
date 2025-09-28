@@ -8,8 +8,6 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import Distance, VectorParams, Filter, FieldCondition, MatchValue, PayloadSchemaType
 from qdrant_client.models import PointStruct
-import chromadb
-from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 from rank_bm25 import BM25Okapi
@@ -36,10 +34,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.figure_factory as ff
-import plotly.io as pio
-import base64
-import io
-from typing import Dict, List, Any, Optional
 # Lazy imports for translators to avoid hard dependency issues at import time
 try:
     from googletrans import Translator as GoogleTransTranslator
@@ -58,13 +52,7 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COLLECTION_NAME = "ingris_groundwater_collection"
 VECTOR_SIZE = 768  # Upgraded to support better embedding models
-MIN_SIMILARITY_SCORE = 0.4  # Balanced threshold for dense search (can be adjusted to 0.7 gradually)
-
-# --- Advanced RAG Configuration ---
-HYBRID_ALPHA = 0.6  # Weight for dense vs sparse retrieval (0.6 = 60% dense, 40% sparse)
-QUERY_EXPANSION_TERMS = 5  # Number of terms to add via query expansion (increased for better coverage)
-RERANK_MIN_SIMILARITY = 0.3  # Minimum similarity for reranking (increased from 0.1)
-DIVERSIFICATION_THRESHOLD = 0.8  # Maximum similarity between diversified results
+MIN_SIMILARITY_SCORE = 0.1  # Lowered threshold to find more relevant results
 
 # --- Language Support ---
 SUPPORTED_LANGUAGES = {
@@ -104,14 +92,12 @@ CHAT_HISTORY_DIR = os.path.join(BASE_DIR, "chat_histories")
 os.makedirs(CHAT_HISTORY_DIR, exist_ok=True)
 
 _qdrant_client = None
-_chromadb_client = None
-_chromadb_collection = None
 _model = None
 _nlp = None
-_bm25_model = None
-_all_chunks = None
 _gemini_model = None
 _master_df = None
+_bm25_model = None
+_all_chunks = None
 _bm25_df = None
 _translator_model = None
 _translator_tokenizer = None
@@ -186,7 +172,6 @@ class GroundwaterQuery(BaseModel):
     district: Optional[str] = None
     assessment_unit: Optional[str] = None
     include_visualizations: bool = True
-    user_id: str = None
     language: Optional[str] = "en"
 
 class GroundwaterResponse(BaseModel):
@@ -302,7 +287,7 @@ def initialize_sentence_transformer():
                 return False
 
 def _init_components():
-    global _qdrant_client, _chromadb_client, _chromadb_collection, _model, _nlp, _gemini_model, _master_df, _translator_model, _translator_tokenizer, _indic_processor
+    global _qdrant_client, _model, _nlp, _gemini_model, _master_df, _translator_model, _translator_tokenizer, _indic_processor
     if _qdrant_client is None:
         try:
             print(f"🔄 Connecting to Qdrant at {QDRANT_URL}...")
@@ -319,22 +304,6 @@ def _init_components():
             print(f"❌ Failed to initialize Qdrant client: {str(e)}")
             print("⚠️ Continuing without Qdrant - some features will be limited")
             _qdrant_client = None
-    
-    # Initialize ChromaDB
-    if _chromadb_client is None:
-        try:
-            print("🔄 Connecting to ChromaDB...")
-            _chromadb_client = chromadb.PersistentClient(
-                path="./chroma_db",
-                settings=Settings(anonymized_telemetry=False)
-            )
-            _chromadb_collection = _chromadb_client.get_collection("ingris_groundwater_collection")
-            print("✅ ChromaDB connection established")
-        except Exception as e:
-            print(f"❌ Failed to initialize ChromaDB: {str(e)}")
-            print("⚠️ Continuing without ChromaDB - some features will be limited")
-            _chromadb_client = None
-            _chromadb_collection = None
     if _model is None:
         if not initialize_sentence_transformer():
             print("Warning: Dense embeddings are disabled (SentenceTransformer failed). Falling back to BM25-only search.")
@@ -810,195 +779,10 @@ def expand_query(query_text):
     expanded_query = " ".join(expanded_terms)
     return expanded_query
 
-def search_chromadb(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
-    """Search using ChromaDB as fallback when Qdrant is unavailable"""
-    _init_components()
-    
-    if _chromadb_collection is None:
-        print("❌ ChromaDB not available")
-        return []
-    
-    try:
-        # Generate query embedding
-        if _model is None:
-            print("❌ Embedding model not available")
-            return []
-        
-        query_embedding = _model.encode([query_text])[0].tolist()
-        
-        # Search in ChromaDB
-        results = _chromadb_collection.query(
-            query_embeddings=[query_embedding],
-            n_results=20,
-            include=['documents', 'metadatas', 'distances']
-        )
-        
-        # Format results
-        formatted_results = []
-        if results['documents'] and results['documents'][0]:
-            for i, doc in enumerate(results['documents'][0]):
-                metadata = results['metadatas'][0][i] if results['metadatas'] and results['metadatas'][0] else {}
-                distance = results['distances'][0][i] if results['distances'] and results['distances'][0] else 0
-                similarity = 1 - distance
-                
-                # Filter by minimum similarity threshold
-                if similarity >= MIN_SIMILARITY_SCORE:
-                    # Convert ChromaDB format to expected format
-                    formatted_result = {
-                        'data': metadata,  # ChromaDB metadata contains the actual data
-                        'score': similarity,
-                        'distance': distance
-                    }
-                    formatted_results.append(formatted_result)
-        
-        # Sort by similarity (highest first)
-        formatted_results.sort(key=lambda x: x['score'], reverse=True)
-        
-        print(f"✅ ChromaDB search returned {len(formatted_results)} results")
-        return formatted_results
-        
-    except Exception as e:
-        print(f"❌ Error in ChromaDB search: {str(e)}")
-        return []
-
-def prioritize_complete_records(search_results):
-    """Prioritize search results based on data completeness"""
-    if not search_results:
-        return search_results
-    
-    def calculate_completeness_score(record):
-        """Calculate completeness score for a record"""
-        if 'data' not in record:
-            return 0
-        
-        data = record['data']
-        score = 0
-        
-        # Check for administrative data
-        if pd.notna(data.get('taluk')) and str(data.get('taluk')).strip() != '' and str(data.get('taluk')).strip().lower() != 'nan':
-            score += 2
-        if pd.notna(data.get('block')) and str(data.get('block')).strip() != '' and str(data.get('block')).strip().lower() != 'nan':
-            score += 2
-        if pd.notna(data.get('mandal')) and str(data.get('mandal')).strip() != '' and str(data.get('mandal')).strip().lower() != 'nan':
-            score += 2
-        if pd.notna(data.get('village')) and str(data.get('village')).strip() != '' and str(data.get('village')).strip().lower() != 'nan':
-            score += 2
-        
-        # Check for storage data
-        if pd.notna(data.get('instorage_unconfined_ground_water_resourcesham')) and str(data.get('instorage_unconfined_ground_water_resourcesham')).strip() != '' and str(data.get('instorage_unconfined_ground_water_resourcesham')).strip().lower() != 'nan':
-            try:
-                val = float(data.get('instorage_unconfined_ground_water_resourcesham'))
-                if val > 0:
-                    score += 3
-            except:
-                pass
-        
-        # Check for watershed data
-        if pd.notna(data.get('watershed_category')) and str(data.get('watershed_category')).strip() != '' and str(data.get('watershed_category')).strip().lower() != 'nan':
-            score += 2
-        
-        return score
-    
-    # Sort by completeness score (descending) and then by original score (descending)
-    prioritized_results = sorted(
-        search_results, 
-        key=lambda x: (calculate_completeness_score(x), x.get('score', 0)), 
-        reverse=True
-    )
-    
-    print(f"📊 Prioritized {len(prioritized_results)} results by data completeness")
-    return prioritized_results
-
 def search_excel_chunks(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
-    """Optimized search: Qdrant first, then ChromaDB, then CSV fallback"""
+    """Simple, reliable search using the working method from karnataka_search.py"""
     _init_components()
     
-    # Step 1: Try Qdrant first (if available)
-    if _qdrant_client is not None:
-        print("🔄 Trying Qdrant search first...")
-        try:
-            qdrant_results = search_qdrant_optimized(query_text, year, target_state, target_district)
-            if qdrant_results:
-                print(f"✅ Qdrant search successful: {len(qdrant_results)} results")
-                # Prioritize Qdrant results by data completeness
-                prioritized_qdrant_results = prioritize_complete_records(qdrant_results)
-                
-                # Check if Qdrant results have complete data
-                print("🔍 Checking Qdrant results for complete data...")
-                has_complete_data = False
-                for i, result in enumerate(prioritized_qdrant_results[:5]):
-                    taluk_value = result.get('data', {}).get('taluk')
-                    print(f"  Result {i+1}: Taluk = '{taluk_value}'")
-                    if (pd.notna(taluk_value) and 
-                        str(taluk_value).strip() != '' and 
-                        str(taluk_value).strip().lower() != 'nan' and
-                        str(taluk_value).strip().lower() != 'n/a'):
-                        has_complete_data = True
-                        print(f"    ✅ Found complete data in result {i+1}")
-                        break
-                
-                print(f"🔍 Qdrant has complete data: {has_complete_data}")
-                
-                if has_complete_data:
-                    return prioritized_qdrant_results
-                else:
-                    print("⚠️ Qdrant results lack complete data, trying ChromaDB...")
-            else:
-                print("❌ Qdrant search returned no results, trying ChromaDB...")
-        except Exception as e:
-            print(f"❌ Qdrant search failed: {str(e)}, trying ChromaDB...")
-    
-    # Step 2: Try ChromaDB (if available)
-    if _chromadb_collection is not None:
-        print("🔄 Trying ChromaDB search...")
-        try:
-            chromadb_results = search_chromadb(query_text, year, target_state, target_district, extracted_parameters)
-            if chromadb_results:
-                print(f"✅ ChromaDB search successful: {len(chromadb_results)} results")
-                # Prioritize ChromaDB results by data completeness
-                prioritized_chromadb_results = prioritize_complete_records(chromadb_results)
-                
-                # Check if ChromaDB results have complete data
-                print("🔍 Checking ChromaDB results for complete data...")
-                has_complete_data = False
-                for i, result in enumerate(prioritized_chromadb_results[:5]):
-                    data = result.get('data', {})
-                    taluk_value = data.get('taluk')
-                    print(f"  Result {i+1}: Taluk = '{taluk_value}'")
-                    
-                    # Check if taluk field exists and has valid data
-                    if 'taluk' not in data:
-                        print(f"    ❌ Taluk field missing from ChromaDB metadata")
-                        has_complete_data = False
-                        break
-                    elif (pd.notna(taluk_value) and 
-                          str(taluk_value).strip() != '' and 
-                          str(taluk_value).strip().lower() != 'nan' and
-                          str(taluk_value).strip().lower() != 'n/a' and
-                          str(taluk_value).strip().lower() != 'none'):
-                        has_complete_data = True
-                        print(f"    ✅ Found complete data in result {i+1}")
-                        break
-                    else:
-                        print(f"    ❌ Taluk data is empty/invalid: '{taluk_value}'")
-                
-                print(f"🔍 ChromaDB has complete data: {has_complete_data}")
-                
-                if has_complete_data:
-                    return prioritized_chromadb_results
-                else:
-                    print("⚠️ ChromaDB results lack complete data, trying CSV fallback...")
-            else:
-                print("❌ ChromaDB search returned no results, trying CSV fallback...")
-        except Exception as e:
-            print(f"❌ ChromaDB search failed: {str(e)}, trying CSV fallback...")
-    
-    # Step 3: CSV fallback (always available)
-    print("🔄 Using CSV fallback search...")
-    return csv_fallback_search(query_text, year, target_state, target_district)
-
-def search_qdrant_optimized(query_text, year=None, target_state=None, target_district=None):
-    """Optimized Qdrant search with better error handling"""
     try:
         # Create query vector using the working method
         if _model is None:
@@ -1079,157 +863,7 @@ def search_qdrant_optimized(query_text, year=None, target_state=None, target_dis
         return results_with_payloads
 
     except Exception as e:
-        print(f"Error performing Qdrant search: {str(e)}")
-        return []
-
-def get_data_availability_explanation(context_data, target_state=None):
-    """Generate data availability explanation based on context data"""
-    if not context_data:
-        return "No data found in the dataset for the specified query."
-    
-    # Analyze data availability in results
-    total_records = len(context_data)
-    data_stats = {
-        'taluk': 0,
-        'block': 0,
-        'mandal': 0,
-        'village': 0,
-        'storage': 0,
-        'watershed': 0,
-        'quality': 0
-    }
-    
-    for data in context_data:
-        if pd.notna(data.get('taluk')) and str(data.get('taluk')).strip() != '' and str(data.get('taluk')).strip().lower() != 'nan':
-            data_stats['taluk'] += 1
-        if pd.notna(data.get('block')) and str(data.get('block')).strip() != '' and str(data.get('block')).strip().lower() != 'nan':
-            data_stats['block'] += 1
-        if pd.notna(data.get('mandal')) and str(data.get('mandal')).strip() != '' and str(data.get('mandal')).strip().lower() != 'nan':
-            data_stats['mandal'] += 1
-        if pd.notna(data.get('village')) and str(data.get('village')).strip() != '' and str(data.get('village')).strip().lower() != 'nan':
-            data_stats['village'] += 1
-        if pd.notna(data.get('instorage_unconfined_ground_water_resourcesham')) and str(data.get('instorage_unconfined_ground_water_resourcesham')).strip() != '' and str(data.get('instorage_unconfined_ground_water_resourcesham')).strip().lower() != 'nan':
-            data_stats['storage'] += 1
-        if pd.notna(data.get('watershed_category')) and str(data.get('watershed_category')).strip() != '' and str(data.get('watershed_category')).strip().lower() != 'nan':
-            data_stats['watershed'] += 1
-        if pd.notna(data.get('quality_tagging')) and str(data.get('quality_tagging')).strip() != '' and str(data.get('quality_tagging')).strip().lower() != 'nan':
-            data_stats['quality'] += 1
-    
-    # Generate explanation
-    explanation = f"📊 DATA AVAILABILITY ANALYSIS:\n"
-    explanation += f"Based on {total_records} records found in the dataset:\n\n"
-    
-    # Administrative data
-    explanation += "🏛️ ADMINISTRATIVE DATA COVERAGE:\n"
-    explanation += f"  • Taluk data: {data_stats['taluk']}/{total_records} records ({(data_stats['taluk']/total_records)*100:.1f}%)\n"
-    explanation += f"  • Block data: {data_stats['block']}/{total_records} records ({(data_stats['block']/total_records)*100:.1f}%)\n"
-    explanation += f"  • Mandal data: {data_stats['mandal']}/{total_records} records ({(data_stats['mandal']/total_records)*100:.1f}%)\n"
-    explanation += f"  • Village data: {data_stats['village']}/{total_records} records ({(data_stats['village']/total_records)*100:.1f}%)\n\n"
-    
-    # Technical data
-    explanation += "🔬 TECHNICAL DATA COVERAGE:\n"
-    explanation += f"  • Storage data: {data_stats['storage']}/{total_records} records ({(data_stats['storage']/total_records)*100:.1f}%)\n"
-    explanation += f"  • Watershed data: {data_stats['watershed']}/{total_records} records ({(data_stats['watershed']/total_records)*100:.1f}%)\n"
-    explanation += f"  • Quality data: {data_stats['quality']}/{total_records} records ({(data_stats['quality']/total_records)*100:.1f}%)\n\n"
-    
-    # Explanations for missing data
-    explanation += "💡 REASONS FOR MISSING DATA:\n"
-    if data_stats['taluk'] == 0:
-        explanation += "  • Taluk data: Administrative hierarchy data not collected for this region\n"
-    if data_stats['block'] == 0:
-        explanation += "  • Block data: Block-level administrative data not available in dataset\n"
-    if data_stats['mandal'] == 0:
-        explanation += "  • Mandal data: Mandal-level data not collected for this area\n"
-    if data_stats['village'] == 0:
-        explanation += "  • Village data: Village-level data not available in dataset\n"
-    if data_stats['storage'] == 0:
-        explanation += "  • Storage data: Groundwater storage measurements not conducted/recorded\n"
-    if data_stats['watershed'] == 0:
-        explanation += "  • Watershed data: Watershed categorization not available for this region\n"
-    if data_stats['quality'] == 0:
-        explanation += "  • Quality data: Water quality testing not conducted in this area\n"
-    
-    # State-specific context
-    if target_state:
-        explanation += f"\n🌍 STATE-SPECIFIC CONTEXT:\n"
-        explanation += f"Data collection practices vary across states. {target_state} may have different data collection priorities or methodologies compared to other states in the dataset.\n"
-    
-    return explanation
-
-def csv_fallback_search(query_text, year=None, target_state=None, target_district=None):
-    """CSV fallback search when Qdrant and ChromaDB fail"""
-    try:
-        print("🔄 Using CSV fallback search...")
-        
-        # Load CSV data
-        df = pd.read_csv('ingris_rag_ready_complete.csv', low_memory=False)
-        
-        # Filter by state if specified
-        if target_state:
-            df = df[df['state'].str.contains(target_state, case=False, na=False)]
-        
-        # Filter by district if specified
-        if target_district:
-            df = df[df['district'].str.contains(target_district, case=False, na=False)]
-        
-        # Filter by year if specified
-        if year:
-            df = df[df['year'] == year]
-        
-        if len(df) == 0:
-            print("❌ No matching records found in CSV")
-            return []
-        
-        print(f"📊 Found {len(df)} matching records in CSV")
-        
-        # Prioritize records with more complete data
-        def calculate_completeness_score(row):
-            score = 0
-            if pd.notna(row.get('taluk')) and str(row.get('taluk')).strip() != '' and str(row.get('taluk')).strip().lower() != 'nan':
-                score += 2
-            if pd.notna(row.get('block')) and str(row.get('block')).strip() != '' and str(row.get('block')).strip().lower() != 'nan':
-                score += 2
-            if pd.notna(row.get('mandal')) and str(row.get('mandal')).strip() != '' and str(row.get('mandal')).strip().lower() != 'nan':
-                score += 2
-            if pd.notna(row.get('village')) and str(row.get('village')).strip() != '' and str(row.get('village')).strip().lower() != 'nan':
-                score += 2
-            if pd.notna(row.get('instorage_unconfined_ground_water_resourcesham')) and str(row.get('instorage_unconfined_ground_water_resourcesham')).strip() != '' and str(row.get('instorage_unconfined_ground_water_resourcesham')).strip().lower() != 'nan':
-                try:
-                    val = float(row.get('instorage_unconfined_ground_water_resourcesham'))
-                    if val > 0:
-                        score += 3
-                except:
-                    pass
-            if pd.notna(row.get('watershed_category')) and str(row.get('watershed_category')).strip() != '' and str(row.get('watershed_category')).strip().lower() != 'nan':
-                score += 2
-            return score
-        
-        # Add completeness score and sort
-        df['completeness_score'] = df.apply(calculate_completeness_score, axis=1)
-        df_sorted = df.sort_values('completeness_score', ascending=False)
-        
-        # Take top 20 records
-        top_records = df_sorted.head(20)
-        
-        # Convert to expected format
-        results = []
-        for idx, row in top_records.iterrows():
-            # Convert row to dictionary with lowercase keys
-            data = {}
-            for col in row.index:
-                if col != 'completeness_score':  # Skip the score column
-                    data[col.lower()] = row[col]
-            
-            results.append({
-                "score": 0.8,  # Default score for CSV results
-                "data": data
-            })
-        
-        print(f"✅ CSV fallback returned {len(results)} results")
-        return results
-        
-    except Exception as e:
-        print(f"❌ CSV fallback failed: {str(e)}")
+        print(f"Error performing search: {str(e)}")
         return []
 
 def re_rank_chunks(query_text, candidate_results, top_k=5):
@@ -1304,545 +938,6 @@ def expand_query(query, num_terms=3):
         print(f"Error expanding query: {e}")
         return ""
 
-# ===== ADVANCED RAG FUNCTIONS =====
-
-def calculate_semantic_boost(query_text, chunk_text):
-    """Calculate semantic boost for groundwater-specific terms."""
-    if not query_text or not chunk_text:
-        return 0.0
-    
-    # Groundwater-specific terms that should get higher scores
-    groundwater_terms = {
-        'groundwater': 0.3,
-        'aquifer': 0.25,
-        'recharge': 0.2,
-        'extraction': 0.2,
-        'sustainability': 0.15,
-        'over-exploited': 0.2,
-        'critical': 0.15,
-        'safe': 0.1,
-        'rainfall': 0.15,
-        'assessment': 0.1,
-        'ham': 0.1,
-        'mm': 0.05,
-        'percentage': 0.05,
-        'watershed': 0.1,
-        'taluk': 0.1,
-        'district': 0.05,
-        'state': 0.05
-    }
-    
-    query_lower = query_text.lower()
-    chunk_lower = chunk_text.lower()
-    
-    boost = 0.0
-    for term, boost_value in groundwater_terms.items():
-        if term in query_lower and term in chunk_lower:
-            boost += boost_value
-    
-    # Additional boost for exact phrase matches
-    query_words = set(query_lower.split())
-    chunk_words = set(chunk_lower.split())
-    common_words = query_words.intersection(chunk_words)
-    
-    if len(common_words) > 0:
-        boost += min(0.2, len(common_words) * 0.05)
-    
-    return min(boost, 0.5)  # Cap at 50% boost
-
-def diversify_results(scored_results, query_text, max_similarity=0.8):
-    """Diversify results to avoid similar chunks."""
-    if not scored_results or len(scored_results) <= 1:
-        return [result for result, score in scored_results]
-    
-    try:
-        diversified = []
-        used_chunks = set()
-        
-        for result, score in scored_results:
-            chunk_text = result['data'].get('combined_text', '')
-            if not chunk_text:
-                continue
-            
-            # Check similarity with already selected chunks
-            is_similar = False
-            for used_chunk in used_chunks:
-                if calculate_text_similarity(chunk_text, used_chunk) > max_similarity:
-                    is_similar = True
-                    break
-            
-            if not is_similar:
-                diversified.append(result)
-                used_chunks.add(chunk_text)
-                
-                # Limit to reasonable number of diverse results
-                if len(diversified) >= 20:
-                    break
-        
-        print(f"🔄 Diversification: {len(diversified)} diverse results from {len(scored_results)} candidates")
-        return diversified
-        
-    except Exception as e:
-        print(f"⚠️ Diversification failed: {e}")
-        return [result for result, score in scored_results]
-
-def calculate_text_similarity(text1, text2):
-    """Calculate similarity between two text chunks."""
-    if not text1 or not text2:
-        return 0.0
-    
-    # Simple Jaccard similarity
-    words1 = set(text1.lower().split())
-    words2 = set(text2.lower().split())
-    
-    if not words1 or not words2:
-        return 0.0
-    
-    intersection = len(words1.intersection(words2))
-    union = len(words1.union(words2))
-    
-    return intersection / union if union > 0 else 0.0
-
-def tokenize_text_for_bm25(text):
-    """Tokenize text for BM25 processing."""
-    if not text:
-        return []
-    # Simple tokenization - can be enhanced with proper NLP preprocessing
-    return text.lower().split()
-
-def load_bm25_model():
-    """Load or create BM25 model from all available chunks."""
-    global _bm25_model, _all_chunks
-    
-    if _bm25_model is not None and _all_chunks is not None:
-        return _bm25_model, _all_chunks
-    
-    try:
-        # Try to get all chunks from Qdrant first
-        if _qdrant_client:
-            scroll_result = _qdrant_client.scroll(
-                collection_name=COLLECTION_NAME,
-                limit=100000,
-                with_payload=True,
-                with_vectors=False
-            )
-            all_chunks = [point.payload.get('combined_text', '') for point in scroll_result[0] if point.payload.get('combined_text')]
-        else:
-            # Fallback to ChromaDB
-            if _chromadb_collection:
-                results = _chromadb_collection.get(limit=100000, include=['metadatas'])
-                all_chunks = [metadata.get('combined_text', '') for metadata in results['metadatas'] if metadata.get('combined_text')]
-            else:
-                all_chunks = []
-        
-        if all_chunks:
-            tokenized_chunks = [tokenize_text_for_bm25(chunk) for chunk in all_chunks]
-            _bm25_model = BM25Okapi(tokenized_chunks)
-            _all_chunks = all_chunks
-            print(f"✅ BM25 model initialized with {len(all_chunks)} chunks")
-        else:
-            print("⚠️ No chunks found for BM25 initialization")
-            _bm25_model = None
-            _all_chunks = []
-        
-        return _bm25_model, _all_chunks
-        
-    except Exception as e:
-        print(f"❌ Error loading BM25 model: {e}")
-        _bm25_model = None
-        _all_chunks = []
-        return None, []
-
-def hybrid_search(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
-    """Perform hybrid search combining dense and sparse retrieval."""
-    try:
-        print(f"🔍 Starting hybrid search for: {query_text}")
-        
-        # Initialize components
-        _init_components()
-        
-        # --- Dense Retrieval (Vector Search) ---
-        print("📊 Performing dense retrieval...")
-        dense_results = []
-        
-        # Calculate adaptive dense search threshold
-        dense_threshold = calculate_dense_search_threshold(query_text)
-        
-        # Try Qdrant first
-        if _qdrant_client:
-            try:
-                query_vector = _model.encode([query_text])[0]
-                qdrant_results = _qdrant_client.search(
-                    collection_name=COLLECTION_NAME,
-                    query_vector=query_vector,
-                    limit=50,  # Get more candidates for hybrid scoring
-                    score_threshold=0.0  # Low threshold to get candidates
-                )
-                # Apply adaptive threshold filtering
-                dense_results = [
-                    {"score": hit.score, "data": hit.payload} 
-                    for hit in qdrant_results 
-                    if hit.score >= dense_threshold
-                ]
-                print(f"✅ Dense retrieval: {len(dense_results)} results from Qdrant (threshold: {dense_threshold:.3f})")
-            except Exception as e:
-                print(f"⚠️ Qdrant dense search failed: {e}")
-        
-        # Fallback to ChromaDB
-        if not dense_results and _chromadb_collection:
-            try:
-                chromadb_results = _chromadb_collection.query(
-                    query_texts=[query_text],
-                    n_results=50,
-                    include=['metadatas', 'distances']
-                )
-                if chromadb_results['metadatas'] and chromadb_results['metadatas'][0]:
-                    dense_results = []
-                    for i, (metadata, distance) in enumerate(zip(chromadb_results['metadatas'][0], chromadb_results['distances'][0])):
-                        score = 1 - distance  # Convert distance to similarity
-                        if score >= dense_threshold:  # Use adaptive threshold
-                            dense_results.append({"score": score, "data": metadata})
-                    print(f"✅ Dense retrieval: {len(dense_results)} results from ChromaDB (threshold: {dense_threshold:.3f})")
-            except Exception as e:
-                print(f"⚠️ ChromaDB dense search failed: {e}")
-        
-        # --- Sparse Retrieval (BM25) ---
-        print("📝 Performing sparse retrieval...")
-        sparse_results = []
-        
-        bm25_model, all_chunks = load_bm25_model()
-        if bm25_model and all_chunks:
-            try:
-                tokenized_query = tokenize_text_for_bm25(query_text)
-                bm25_scores = bm25_model.get_scores(tokenized_query)
-                
-                # Create sparse results
-                for i, score in enumerate(bm25_scores):
-                    if score > 0:  # Only consider chunks with positive BM25 score
-                        chunk_text = all_chunks[i]
-                        # Try to find corresponding metadata
-                        metadata = {"combined_text": chunk_text}
-                        sparse_results.append({"score": score, "data": metadata})
-                
-                print(f"✅ Sparse retrieval: {len(sparse_results)} results from BM25")
-            except Exception as e:
-                print(f"⚠️ BM25 sparse search failed: {e}")
-        
-        # --- Enhanced Hybrid Scoring ---
-        print("🔄 Performing enhanced hybrid scoring...")
-        combined_scores = {}
-        alpha = HYBRID_ALPHA  # Weight for dense vs sparse
-        
-        # Advanced normalization with robust statistics
-        dense_scores = [r['score'] for r in dense_results] if dense_results else []
-        sparse_scores = [r['score'] for r in sparse_results] if sparse_results else []
-        
-        # Use robust normalization (avoid division by very small numbers)
-        max_dense_score = max(dense_scores) if dense_scores else 1.0
-        max_sparse_score = max(sparse_scores) if sparse_scores else 1.0
-        
-        # Add minimum threshold to avoid division by very small numbers
-        max_dense_score = max(max_dense_score, 0.01)
-        max_sparse_score = max(max_sparse_score, 0.01)
-        
-        # Combine dense results with enhanced scoring
-        for result in dense_results:
-            chunk_key = result['data'].get('combined_text', str(result['data']))
-            normalized_score = result['score'] / max_dense_score
-            
-            # Apply semantic boosting for groundwater-specific terms
-            semantic_boost = calculate_semantic_boost(query_text, chunk_key)
-            enhanced_score = normalized_score * (1 + semantic_boost)
-            
-            combined_scores[chunk_key] = alpha * enhanced_score
-        
-        # Combine sparse results with enhanced scoring
-        for result in sparse_results:
-            chunk_key = result['data'].get('combined_text', str(result['data']))
-            normalized_score = result['score'] / max_sparse_score
-            
-            # Apply semantic boosting for groundwater-specific terms
-            semantic_boost = calculate_semantic_boost(query_text, chunk_key)
-            enhanced_score = normalized_score * (1 + semantic_boost)
-            
-            if chunk_key in combined_scores:
-                combined_scores[chunk_key] += (1 - alpha) * enhanced_score
-            else:
-                combined_scores[chunk_key] = (1 - alpha) * enhanced_score
-        
-        # Sort by combined score
-        sorted_results = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
-        
-        # Convert back to result format
-        final_results = []
-        for chunk_key, score in sorted_results[:50]:  # Top 50 for reranking
-            # Find the original result with this chunk
-            for result in dense_results + sparse_results:
-                if result['data'].get('combined_text', str(result['data'])) == chunk_key:
-                    final_results.append({"score": score, "data": result['data']})
-                    break
-        
-        print(f"✅ Hybrid search completed: {len(final_results)} results")
-        return final_results
-        
-    except Exception as e:
-        print(f"❌ Hybrid search failed: {e}")
-        # Fallback to regular search
-        return search_excel_chunks(query_text, year, target_state, target_district, extracted_parameters)
-
-def advanced_rerank(query_text, candidate_results):
-    """Advanced reranking using semantic similarity - returns ALL chunks above minimum threshold."""
-    return advanced_rerank_with_threshold(query_text, candidate_results, RERANK_MIN_SIMILARITY)
-
-def advanced_rerank_with_threshold(query_text, candidate_results, threshold):
-    """Advanced reranking with custom threshold - returns ALL chunks above threshold."""
-    if not candidate_results or not _model:
-        return candidate_results if candidate_results else []
-    
-    try:
-        print(f"🔄 Advanced reranking {len(candidate_results)} candidates with threshold {threshold:.3f}...")
-        
-        # Extract text from candidates
-        candidate_texts = []
-        for result in candidate_results:
-            text = result['data'].get('combined_text', '')
-            if not text:
-                # Try to construct text from available fields
-                data = result['data']
-                text_parts = []
-                for key, value in data.items():
-                    if isinstance(value, (str, int, float)) and value and key not in ['id', 'source_file']:
-                        text_parts.append(f"{key}: {value}")
-                text = " ".join(text_parts)
-            candidate_texts.append(text)
-        
-        if not candidate_texts:
-            return candidate_results
-        
-        # Encode query and candidates
-        query_embedding = _model.encode([query_text])[0]
-        candidate_embeddings = _model.encode(candidate_texts)
-        
-        # Calculate cosine similarity
-        query_norm = np.linalg.norm(query_embedding)
-        candidate_norms = np.linalg.norm(candidate_embeddings, axis=1)
-        
-        if query_norm == 0:
-            return candidate_results
-        
-        # Avoid division by zero
-        candidate_norms[candidate_norms == 0] = 1e-12
-        
-        similarities = np.dot(candidate_embeddings, query_embedding) / (candidate_norms * query_norm)
-        
-        # Apply custom similarity threshold - return ALL chunks above threshold
-        valid_indices = similarities >= threshold
-        
-        if not np.any(valid_indices):
-            print(f"⚠️ No candidates meet similarity threshold ({threshold:.3f})")
-            return []
-        
-        # Create scored results for ALL qualifying chunks
-        scored_results = []
-        for i, (result, similarity) in enumerate(zip(candidate_results, similarities)):
-            if valid_indices[i]:
-                # Enhanced scoring with semantic boost
-                semantic_boost = calculate_semantic_boost(query_text, candidate_texts[i])
-                base_score = 0.7 * similarity + 0.3 * result.get('score', 0)
-                enhanced_score = base_score * (1 + semantic_boost)
-                scored_results.append((result, enhanced_score))
-        
-        # Sort by enhanced score (highest first)
-        scored_results.sort(key=lambda x: x[1], reverse=True)
-        
-        # Apply result diversification to avoid similar chunks
-        diversified_results = diversify_results(scored_results, query_text)
-        
-        print(f"✅ Advanced reranking completed: {len(diversified_results)} results above threshold {threshold:.3f}")
-        return diversified_results
-        
-    except Exception as e:
-        print(f"❌ Advanced reranking failed: {e}")
-        return candidate_results
-
-def enhanced_query_expansion(query, num_terms=3):
-    """Enhanced query expansion with advanced domain-specific techniques."""
-    if not _gemini_model:
-        return query
-    
-    try:
-        # Multi-stage query expansion for better coverage
-        expanded_terms = []
-        
-        # Stage 1: Technical term expansion
-        technical_prompt = f"""
-        As a groundwater hydrologist, expand this query with {num_terms//2 + 1} technical terms:
-        
-        Query: "{query}"
-        
-        Focus on:
-        - Scientific terminology (aquifer, recharge, extraction, sustainability)
-        - Measurement units (ham, mm, percentage, cubic meters)
-        - Assessment categories (safe, semi-critical, critical, over-exploited)
-        - Administrative terms (assessment unit, watershed, taluk, block)
-        
-        Output only terms, comma-separated:"""
-        
-        try:
-            response = _gemini_model.generate_content(technical_prompt)
-            technical_terms = [term.strip() for term in response.text.strip().split(',') if term.strip()]
-            expanded_terms.extend(technical_terms[:num_terms//2 + 1])
-        except Exception as e:
-            print(f"⚠️ Technical expansion failed: {e}")
-        
-        # Stage 2: Synonym and alternative phrasings
-        synonym_prompt = f"""
-        Provide {num_terms//2 + 1} synonyms and alternative phrasings for groundwater-related terms in this query:
-        
-        Query: "{query}"
-        
-        Include:
-        - Alternative ways to express the same concept
-        - Regional variations in terminology
-        - Formal and informal terms
-        - Related concepts that might appear in data
-        
-        Output only terms, comma-separated:"""
-        
-        try:
-            response = _gemini_model.generate_content(synonym_prompt)
-            synonym_terms = [term.strip() for term in response.text.strip().split(',') if term.strip()]
-            expanded_terms.extend(synonym_terms[:num_terms//2 + 1])
-        except Exception as e:
-            print(f"⚠️ Synonym expansion failed: {e}")
-        
-        # Remove duplicates and limit to requested number
-        expanded_terms = list(dict.fromkeys(expanded_terms))[:num_terms]
-        
-        if expanded_terms:
-            expanded_query = f"{query} {' '.join(expanded_terms)}"
-            print(f"✅ Query expanded with {len(expanded_terms)} terms: {expanded_query}")
-            return expanded_query
-        else:
-            return query
-            
-    except Exception as e:
-        print(f"⚠️ Query expansion failed: {e}")
-        return query
-
-def calculate_adaptive_threshold(query_text, base_threshold=RERANK_MIN_SIMILARITY):
-    """Calculate adaptive threshold based on query complexity and specificity."""
-    if not query_text:
-        return base_threshold
-    
-    # Analyze query complexity
-    query_words = query_text.lower().split()
-    query_length = len(query_words)
-    
-    # Groundwater-specific terms that indicate high specificity
-    specific_terms = {
-        'groundwater', 'aquifer', 'recharge', 'extraction', 'sustainability',
-        'over-exploited', 'critical', 'safe', 'rainfall', 'assessment',
-        'ham', 'percentage', 'watershed', 'taluk', 'district', 'state'
-    }
-    
-    # Count specific terms in query
-    specific_count = sum(1 for word in query_words if word in specific_terms)
-    
-    # Calculate adaptive threshold
-    if query_length <= 3:
-        # Short queries - lower threshold for broader results
-        adaptive_threshold = max(0.1, base_threshold - 0.1)
-    elif specific_count >= 3:
-        # High specificity - can use higher threshold
-        adaptive_threshold = min(0.7, base_threshold + 0.2)
-    elif specific_count >= 1:
-        # Medium specificity - moderate threshold
-        adaptive_threshold = base_threshold
-    else:
-        # Low specificity - lower threshold
-        adaptive_threshold = max(0.1, base_threshold - 0.05)
-    
-    print(f"📊 Adaptive threshold: {adaptive_threshold:.3f} (base: {base_threshold:.3f}, specificity: {specific_count}/{query_length})")
-    return adaptive_threshold
-
-def calculate_dense_search_threshold(query_text, base_threshold=MIN_SIMILARITY_SCORE):
-    """Calculate adaptive dense search threshold based on query characteristics."""
-    if not query_text:
-        return base_threshold
-    
-    # Analyze query for dense search optimization
-    query_lower = query_text.lower()
-    query_words = query_lower.split()
-    
-    # High-precision indicators
-    precision_indicators = {
-        'exact', 'specific', 'precise', 'detailed', 'comprehensive',
-        'analysis', 'report', 'data', 'statistics', 'measurement'
-    }
-    
-    # Technical groundwater terms that should get high precision
-    technical_terms = {
-        'groundwater', 'aquifer', 'recharge', 'extraction', 'sustainability',
-        'over-exploited', 'critical', 'safe', 'rainfall', 'assessment',
-        'ham', 'percentage', 'watershed', 'taluk', 'district', 'state'
-    }
-    
-    # Count precision indicators and technical terms
-    precision_count = sum(1 for word in query_words if word in precision_indicators)
-    technical_count = sum(1 for word in query_words if word in technical_terms)
-    
-    # Calculate dense search threshold
-    if precision_count >= 2 or technical_count >= 4:
-        # High precision query - use higher threshold
-        dense_threshold = min(0.7, base_threshold + 0.2)
-    elif technical_count >= 2:
-        # Medium precision query - moderate threshold
-        dense_threshold = base_threshold
-    else:
-        # General query - lower threshold for broader results
-        dense_threshold = max(0.2, base_threshold - 0.1)
-    
-    print(f"🔍 Dense search threshold: {dense_threshold:.3f} (base: {base_threshold:.3f}, precision: {precision_count}, technical: {technical_count})")
-    return dense_threshold
-
-def advanced_search_with_rag(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
-    """Complete advanced RAG pipeline with query expansion, hybrid search, and reranking."""
-    try:
-        print(f"🚀 Starting advanced RAG pipeline for: {query_text}")
-        
-        # Step 0: Calculate adaptive threshold
-        adaptive_threshold = calculate_adaptive_threshold(query_text)
-        
-        # Step 1: Query Expansion
-        print("📝 Step 1: Query expansion...")
-        expanded_query = enhanced_query_expansion(query_text, QUERY_EXPANSION_TERMS)
-        
-        # Step 2: Hybrid Search
-        print("🔍 Step 2: Hybrid search...")
-        candidate_results = hybrid_search(expanded_query, year, target_state, target_district, extracted_parameters)
-        
-        if not candidate_results:
-            print("⚠️ No results from hybrid search, trying fallback...")
-            candidate_results = search_excel_chunks(query_text, year, target_state, target_district, extracted_parameters)
-        
-        # Step 3: Advanced Reranking with adaptive threshold
-        print("🔄 Step 3: Advanced reranking with adaptive threshold...")
-        final_results = advanced_rerank_with_threshold(query_text, candidate_results, adaptive_threshold)
-        
-        # If no results with adaptive threshold, try with lower threshold
-        if not final_results and adaptive_threshold > 0.1:
-            print("⚠️ No results with adaptive threshold, trying lower threshold...")
-            final_results = advanced_rerank_with_threshold(query_text, candidate_results, 0.1)
-        
-        print(f"✅ Advanced RAG pipeline completed: {len(final_results)} final results above threshold")
-        return final_results
-        
-    except Exception as e:
-        print(f"❌ Advanced RAG pipeline failed: {e}")
-        # Fallback to regular search
-        return search_excel_chunks(query_text, year, target_state, target_district, extracted_parameters)
-
 def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None, chat_history=None, extracted_parameters=None, user_language='en'):
     """Use Gemini to answer the question based on structured Excel data with multilingual support."""
     if not query or not context_data:
@@ -1851,46 +946,45 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
     if not _gemini_model:
         lines = []
         for item in context_data[:3]:
-            lines.append(f"State: {item.get('state', 'N/A')}, District: {item.get('district', 'N/A')}, Unit: {item.get('assessment_unit', 'N/A')}")
+            lines.append(f"State: {item.get('STATE')}, District: {item.get('DISTRICT')}, Unit: {item.get('ASSESSMENT UNIT')}")
         return f"No LLM configured. Top matches:\n" + "\n".join(lines)
     
     # Format structured data into a readable string for the LLM
     data_summary = []
     for i, item in enumerate(context_data, 1):
         data_summary.append(f"=== DATA ENTRY {i} ===")
-        data_summary.append(f"State: {item.get('state', 'N/A')}")
-        data_summary.append(f"District: {item.get('district', 'N/A')}")
-        data_summary.append(f"Assessment Unit: {item.get('assessment_unit', 'N/A')}")
-        data_summary.append(f"Assessment Year: {item.get('year', 'N/A')}")
-        data_summary.append(f"Serial Number: {item.get('serial_number', 'N/A')}")
+        data_summary.append(f"State: {item.get('STATE', 'N/A')}")
+        data_summary.append(f"District: {item.get('DISTRICT', 'N/A')}")
+        data_summary.append(f"Assessment Unit: {item.get('ASSESSMENT UNIT', 'N/A')}")
+        data_summary.append(f"Assessment Year: {item.get('Assessment_Year', 'N/A')}")
+        data_summary.append(f"Serial Number: {item.get('S.No', 'N/A')}")
         data_summary.append("")
         
         # Group columns by category for better organization
         categories = {
-            "RAINFALL DATA": [col for col in item.keys() if 'rainfall' in col.lower()],
-            "GEOGRAPHICAL AREA": [col for col in item.keys() if 'total_geographical_area' in col.lower()],
-            "GROUNDWATER RECHARGE": [col for col in item.keys() if 'ground_water_recharge' in col.lower()],
-            "INFLOWS & OUTFLOWS": [col for col in item.keys() if 'inflows_and_outflows' in col.lower()],
-            "ANNUAL RECHARGE": [col for col in item.keys() if 'annual_ground_water_recharge' in col.lower()],
-            "ENVIRONMENTAL FLOWS": [col for col in item.keys() if 'environmental_flows' in col.lower()],
-            "EXTRACTABLE RESOURCES": [col for col in item.keys() if 'annual_extractable_ground_water_resource' in col.lower()],
-            "EXTRACTION DATA": [col for col in item.keys() if 'ground_water_extraction_for_all_uses' in col.lower()],
-            "EXTRACTION STAGE": [col for col in item.keys() if 'stage_of_ground_water_extraction' in col.lower()],
-            "FUTURE ALLOCATION": [col for col in item.keys() if 'allocation_of_ground_water_resource' in col.lower()],
-            "FUTURE AVAILABILITY": [col for col in item.keys() if 'net_annual_ground_water_availability' in col.lower()],
-            "QUALITY TAGGING": [col for col in item.keys() if 'quality_tagging' in col.lower()],
-            "ADDITIONAL RESOURCES": [col for col in item.keys() if 'additional_potential_resources' in col.lower()],
-            "COASTAL AREAS": [col for col in item.keys() if 'coastal_areas' in col.lower()],
-            "UNCONFINED RESOURCES": [col for col in item.keys() if 'instorage_unconfined_ground_water_resources' in col.lower() or 'total_ground_water_availability_in_unconfined' in col.lower()],
-            "CONFINED RESOURCES": [col for col in item.keys() if 'confined_ground_water_resources' in col.lower() and 'semi' not in col.lower()],
-            "SEMI-CONFINED RESOURCES": [col for col in item.keys() if 'semi_confined_ground_water_resources' in col.lower() or 'semiconfined_ground_water_resources' in col.lower()],
-            "TOTAL AVAILABILITY": [col for col in item.keys() if 'total_ground_water_availability_in_the_area' in col.lower()],
-            "WATERSHED & ADMINISTRATIVE": ['watershed_district', 'watershed_category', 'tehsil', 'taluk', 'block', 'mandal', 'village', 'firka'],
+            "RAINFALL DATA": [col for col in item.keys() if 'Rainfall' in col],
+            "GEOGRAPHICAL AREA": [col for col in item.keys() if 'Total Geographical Area' in col],
+            "GROUNDWATER RECHARGE": [col for col in item.keys() if 'Ground Water Recharge' in col],
+            "INFLOWS & OUTFLOWS": [col for col in item.keys() if 'Inflows and Outflows' in col],
+            "ANNUAL RECHARGE": [col for col in item.keys() if 'Annual Ground water Recharge' in col],
+            "ENVIRONMENTAL FLOWS": [col for col in item.keys() if 'Environmental Flows' in col],
+            "EXTRACTABLE RESOURCES": [col for col in item.keys() if 'Annual Extractable Ground water Resource' in col],
+            "EXTRACTION DATA": [col for col in item.keys() if 'Ground Water Extraction for all uses' in col],
+            "EXTRACTION STAGE": [col for col in item.keys() if 'Stage of Ground Water Extraction' in col],
+            "FUTURE ALLOCATION": [col for col in item.keys() if 'Allocation of Ground Water Resource' in col],
+            "FUTURE AVAILABILITY": [col for col in item.keys() if 'Net Annual Ground Water Availability' in col],
+            "QUALITY TAGGING": [col for col in item.keys() if 'Quality Tagging' in col],
+            "ADDITIONAL RESOURCES": [col for col in item.keys() if 'Additional Potential Resources' in col],
+            "COASTAL AREAS": [col for col in item.keys() if 'Coastal Areas' in col],
+            "UNCONFINED RESOURCES": [col for col in item.keys() if 'In-Storage Unconfined Ground Water Resources' in col],
+            "CONFINED RESOURCES": [col for col in item.keys() if 'Confined Ground Water Resources' in col],
+            "SEMI-CONFINED RESOURCES": [col for col in item.keys() if 'Semi Confined Ground Water Resources' in col],
+            "TOTAL AVAILABILITY": [col for col in item.keys() if 'Total Ground Water Availability' in col],
             "OTHER DATA": []
         }
         
         # Add uncategorized columns to "OTHER DATA"
-        excluded_keys = {'state', 'district', 'assessment_unit', 'year', 'serial_number', 'combined_text', 'text', 'source_file', 'valley', 'island'}
+        excluded_keys = {'STATE', 'DISTRICT', 'ASSESSMENT UNIT', 'Assessment_Year', 'S.No', 'combined_text', 'text'}
         for key in item.keys():
             if key not in excluded_keys and not any(key in cat_cols for cat_cols in categories.values()):
                 categories["OTHER DATA"].append(key)
@@ -1900,44 +994,13 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
             if columns:
                 data_summary.append(f"--- {category} ---")
                 for col in columns:
-                    if col in item and pd.notna(item[col]) and str(item[col]).strip() != '' and str(item[col]).strip().lower() != 'nan':
+                    if col in item and pd.notna(item[col]) and str(item[col]).strip() != '':
                         data_summary.append(f"  {col}: {item[col]}")
                     else:
-                        # Provide specific reasons for missing data
-                        if col in item and pd.notna(item[col]) and str(item[col]).strip().lower() == 'nan':
-                            data_summary.append(f"  {col}: No data available (NaN value in dataset)")
-                        elif col not in item:
-                            data_summary.append(f"  {col}: No data available (field not present in dataset)")
-                        else:
-                            # Provide context-specific explanations
-                            if 'taluk' in col.lower():
-                                data_summary.append(f"  {col}: No data available (administrative data not collected for this region)")
-                            elif 'block' in col.lower():
-                                data_summary.append(f"  {col}: No data available (block-level data not available in dataset)")
-                            elif 'mandal' in col.lower():
-                                data_summary.append(f"  {col}: No data available (mandal data not collected for this area)")
-                            elif 'village' in col.lower():
-                                data_summary.append(f"  {col}: No data available (village-level data not available)")
-                            elif 'storage' in col.lower() or 'instorage' in col.lower():
-                                data_summary.append(f"  {col}: No data available (storage data not measured/recorded)")
-                            elif 'watershed' in col.lower():
-                                data_summary.append(f"  {col}: No data available (watershed categorization not available)")
-                            elif 'quality' in col.lower():
-                                data_summary.append(f"  {col}: No data available (water quality testing not conducted)")
-                            elif 'coastal' in col.lower():
-                                data_summary.append(f"  {col}: No data available (not applicable - not a coastal area)")
-                            else:
-                                data_summary.append(f"  {col}: No data available (data not collected/recorded)")
+                        data_summary.append(f"  {col}: No data available")
                 data_summary.append("")
         
         data_summary.append("=" * 50)
-    
-    # Add data availability explanation
-    data_availability_explanation = get_data_availability_explanation(context_data, target_state)
-    data_summary.append("DATA AVAILABILITY EXPLANATION:")
-    data_summary.append("=" * 50)
-    data_summary.append(data_availability_explanation)
-    data_summary.append("=" * 50)
     
     # Add comprehensive averages if no specific year
     if year is None:
@@ -1945,21 +1008,21 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
         
         # Define comprehensive numerical columns for averaging
         numerical_columns = [
-            'annual_ground_water_recharge_ham',
-            'annual_extractable_ground_water_resource_ham',
-            'ground_water_extraction_for_all_uses_ham',
-            'stage_of_ground_water_extraction_',
-            'net_annual_ground_water_availability_for_future_use_ham',
-            'environmental_flows_ham',
-            'allocation_of_ground_water_resource_for_domestic_utilisation_for_projected_year_2025_ham'
+            'Annual Ground water Recharge (ham) - Total - Total',
+            'Annual Extractable Ground water Resource (ham) - Total - Total',
+            'Ground Water Extraction for all uses (ha.m) - Total - Total',
+            'Stage of Ground Water Extraction (%) - Total - Total',
+            'Net Annual Ground Water Availability for Future Use (ham) - Total - Total',
+            'Environmental Flows (ham) - Total - Total',
+            'Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (ham) - Total - Total'
         ]
         
         # Add rainfall columns
-        rainfall_cols = [col for col in context_df.columns if 'rainfall' in col.lower()]
+        rainfall_cols = [col for col in context_df.columns if 'Rainfall (mm)' in col and 'Total' in col]
         numerical_columns.extend(rainfall_cols)
         
         # Add geographical area columns
-        area_cols = [col for col in context_df.columns if 'total_geographical_area' in col.lower()]
+        area_cols = [col for col in context_df.columns if 'Total Geographical Area (ha)' in col and 'Total' in col]
         numerical_columns.extend(area_cols)
         
         avg_data = {}
@@ -2009,313 +1072,62 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
 - Include both numerical values and their units (ham, ha, mm, %).
 - For each data point, explain what it represents and its significance.
 - Organize data into logical categories: Rainfall Data, Geographical Area, Groundwater Recharge, Extraction Data, etc.
-- Use PROPER MARKDOWN TABLES for numerical data - format EXACTLY like this:
+- Use PROPER MARKDOWN TABLES for numerical data - format like this:
+  | Parameter | Cultivated (C) (ham) | Non-Cultivated (NC) (ham) | Perennial (PQ) (ham) | Total (ham) |
+  |-----------|---------------------|---------------------------|---------------------|-------------|
+  | Rainfall Recharge | 15000.50 | 12000.25 | 0.0 | 27000.75 |
 
-WATER Groundwater Data Analysis Report
-
-Query
-**Question:** [user's question]
-
-Analysis
-Groundwater Estimation Report: [State/Region] - [Time Period]
-
-[Brief introduction paragraph]
-
-NATIONAL OVERVIEW SECTION:
-
-GLOBAL NATIONAL GROUNDWATER OVERVIEW:
-
-Total Coverage: 37 states, 796 districts, 7 years of data (2016-2024)
-National Average Extraction: 109.5% (above sustainable limits)
-Critical Areas Nationwide: 2,944 over-exploited + critical areas
-Safe Areas Nationwide: 86,147 areas (53% of total)
-Water Quality Issues: 17,807 areas with contamination
-Most Over-exploited: West Godavari, AP (525,581% extraction)
-Safest Region: Andaman & Nicobar (0% extraction)
-
-DATA AVAILABILITY SECTION:
-
-INFO DATA AVAILABILITY & COVERAGE:
-
-Explain what data is available vs. missing for the specific state/region
-Note data coverage percentages where applicable
-Explain why certain fields show "No data available" with specific reasons:
-* "administrative data not collected for this region" - for missing Taluk/Block/Mandal/Village data
-* "storage data not measured/recorded" - for missing groundwater storage measurements
-* "watershed categorization not available" - for missing watershed classification
-* "water quality testing not conducted" - for missing quality data
-* "not applicable - not a coastal area" - for coastal-specific data in non-coastal regions
-* "data not collected/recorded" - for other missing data types
-
-Highlight any data quality issues or limitations
-Provide context about why certain data might be missing (e.g., different data collection practices across states)
-
-INFO DATA AVAILABILITY ANALYSIS:
-
-Based on [X] records found in the dataset:
-
-ADMIN ADMINISTRATIVE DATA COVERAGE:
-• Taluk data: [X]/[Y] records ([Z]%)
-• Block data: [X]/[Y] records ([Z]%)
-• Mandal data: [X]/[Y] records ([Z]%)
-• Village data: [X]/[Y] records ([Z]%)
-
-TECH TECHNICAL DATA COVERAGE:
-• Storage data: [X]/[Y] records ([Z]%)
-• Watershed data: [X]/[Y] records ([Z]%)
-• Quality data: [X]/[Y] records ([Z]%)
-
-INSIGHT REASONS FOR MISSING DATA:
-• Taluk data: Administrative hierarchy data not collected for this region
-• Mandal data: Mandal-level data not collected for this area
-• Village data: Village-level data not available in dataset
-• Watershed data: Watershed categorization not available for this region
-
-GLOBAL STATE-SPECIFIC CONTEXT:
-Data collection practices vary across states. [STATE] may have different data collection priorities or methodologies compared to other states in the dataset.
-
-District-Wise Analysis
-
-[Group data by district and show all taluks within each district. For each district, provide the following structure:]
-
-1. [District Name] District
-
-#### 1.1. [Taluk Name] Taluk
-
-#### 1. ALERT CRITICALITY ALERT & SUSTAINABILITY STATUS:
-
-| Parameter | Value | Unit | Significance |
-|-----------|-------|------|--------------|
-| Stage of Ground Water Extraction (%) | [value] | % | [significance] |
-| Groundwater categorization | [category] | N/A | [assessment] |
-
-**ALERT CRITICAL ALERT:** [if applicable]
-**Sustainability Indicators:** [analysis]
-
-#### 2. TREND GROUNDWATER TREND ANALYSIS:
-
-| Parameter | Value |
-|-----------|-------|
-| Pre-monsoon groundwater trend | [value] |
-| Post-monsoon groundwater trend | [value] |
-
-**Trend Implications:** [analysis]
-**Seasonal Variation Analysis:** [analysis]
-
-#### 3. RAINFALL RAINFALL & RECHARGE DATA:
-
-| Parameter | Value | Unit | Significance |
-|-----------|-------|------|--------------|
-| Rainfall | [value] | mm | [significance] |
-| Ground Water Recharge | [value] | ham | [significance] |
-| Annual Ground Water Recharge | [value] | ham | [significance] |
-| Environmental Flows | [value] | ham | [significance] |
-
-**Significance:** [analysis]
-
-#### 4. WATER GROUNDWATER EXTRACTION & AVAILABILITY:
-
-| Parameter | Value | Unit | Significance |
-|-----------|-------|------|--------------|
-| Ground Water Extraction for all uses | [value] | ham | [significance] |
-| Annual Extractable Ground Water Resource | [value] | ham | [significance] |
-| Net Annual Ground Water Availability for Future Use | [value] | ham | [significance] |
-| Allocation for Domestic Utilisation for 2025 | [value] | ham | [significance] |
-
-**Extraction Efficiency:** [analysis]
-
-#### 5. TECH WATER QUALITY & ENVIRONMENTAL CONCERNS:
-
-| Parameter | Value |
-|-----------|-------|
-| Quality Tagging | [value] |
-
-**Quality Concerns:** [analysis]
-**Treatment Recommendations:** [analysis]
-**Environmental Sustainability:** [analysis]
-
-#### 6. COASTAL COASTAL & SPECIAL AREAS:
-
-| Parameter | Value |
-|-----------|-------|
-| Coastal Areas identification | [value] |
-| Additional Potential Resources under specific conditions | [value] |
-
-**Special Management:** [analysis]
-**Climate Resilience Considerations:** [analysis]
-
-#### 7. STORAGE GROUNDWATER STORAGE & RESOURCES:
-
-| Parameter | Value | Unit |
-|-----------|-------|------|
-| Instorage Unconfined Ground Water Resources | [value] | ham |
-| Total Ground Water Availability in Unconfined Aquifer | [value] | ham |
-| Dynamic Confined Ground Water Resources | [value] | ham |
-| Instorage Confined Ground Water Resources | [value] | ham |
-| Total Confined Ground Water Resources | [value] | ham |
-| Dynamic Semi-confined Ground Water Resources | [value] | ham |
-| Instorage Semi-confined Ground Water Resources | [value] | ham |
-| Total Semi-confined Ground Water Resources | [value] | ham |
-| Total Ground Water Availability in the Area | [value] | ham |
-
-**Storage Analysis:** [analysis]
-
-#### 8. WATERSHED WATERSHED & ADMINISTRATIVE ANALYSIS:
-
-| Parameter | Value |
-|-----------|-------|
-| Watershed District | [value] |
-| Watershed Category | [value] |
-| Tehsil | [value] |
-| Taluk | [value] |
-| Block | [value] |
-| Mandal | [value] |
-| Village | [value] |
-
-**Watershed Status:** [analysis]
-
-[Continue for all districts...]
-
-[State-Level Comprehensive Summary with same 8 sections]
-
-[Comparative Analysis Between Districts with table]
-
-[Conclusion and Recommendations]
-
-*Report generated by Groundwater RAG API - Multilingual Support*
-*Language: English*
-
-CRITICAL RULES:
-1. ALWAYS use proper markdown table format with | separators
-2. NEVER use plain text tables with dashes
-3. ALWAYS include all 8 sections for each district
-4. Use the EXACT table structure shown above
-5. Include proper headers, units, and significance columns
-6. For state-level queries, analyze ALL available districts
-7. Provide comprehensive data with proper markdown formatting
-8. If data is missing, show "No data available" in the table
-9. NEVER use pipe characters (|) or hyphens (-) as text content
-10. ALWAYS format tables with proper markdown syntax
-
-CRITICAL: YOU MUST INCLUDE ALL 8 MANDATORY SECTIONS IN EVERY REPORT. NO EXCEPTIONS.
+CRITICAL: YOU MUST INCLUDE ALL 7 MANDATORY SECTIONS IN EVERY REPORT. NO EXCEPTIONS.
 
 MANDATORY SECTIONS TO INCLUDE IN EVERY REPORT:
 
-1. 🚨 CRITICALITY ALERT & SUSTAINABILITY STATUS:
-   - Stage of Ground Water Extraction (%) - categorize as Safe (<70%), Semi-Critical (70-90%), Critical (90-100%), or Over-exploited (≥100%)
-   - Groundwater categorization (safe, semi_critical, critical, over_exploited)
-   - Immediate action alerts for over-exploited areas
-   - Sustainability indicators and warnings
+1. RAINFALL DATA (Detailed Breakdown):
+   - Rainfall in Cultivated (C), Non-Cultivated (NC), and Perennial (PQ) areas
+   - Total rainfall with units (mm)
+   - Year-wise rainfall patterns if multiple years available
+   - Significance of rainfall for groundwater recharge
 
-2. 📈 GROUNDWATER TREND ANALYSIS:
-   - Pre-monsoon groundwater trend (Rising/Falling/Neither Rising Nor Falling)
-   - Post-monsoon groundwater trend (Rising/Falling/Neither Rising Nor Falling)
-   - Trend implications for groundwater management
-   - Seasonal variation analysis
+2. GROUNDWATER SOURCES (Complete Source Analysis):
+   - Rainfall Recharge (C, NC, PQ, Total)
+   - Canals (C, NC, PQ, Total)
+   - Surface Water Irrigation (C, NC, PQ, Total)
+   - Ground Water Irrigation (C, NC, PQ, Total)
+   - Tanks and Ponds (C, NC, PQ, Total)
+   - Water Conservation Structures (C, NC, PQ, Total)
+   - Pipelines (C, NC, PQ, Total)
+   - Sewages and Flash Flood Channels (C, NC, PQ, Total)
+   - Total Annual Groundwater Recharge (C, NC, PQ, Total)
+   - Significance of each source for groundwater availability
 
-3. 🌧️ RAINFALL & RECHARGE DATA:
-   - Rainfall (mm) - annual precipitation affecting recharge
-   - Ground Water Recharge (ham) - recharge from rainfall
-   - Annual Ground Water Recharge (ham) - total annual recharge
-   - Environmental Flows (ham) - environmental water requirements
-   - Significance of rainfall patterns for groundwater availability
+3. EXTRACTION PURPOSES (Detailed Use Analysis):
+   - Ground Water Extraction for Domestic Use (C, NC, PQ, Total)
+   - Ground Water Extraction for Industrial Use (C, NC, PQ, Total)
+   - Ground Water Extraction for Irrigation (C, NC, PQ, Total)
+   - Total Ground Water Extraction for all uses (C, NC, PQ, Total)
+   - Analysis of extraction patterns and sustainability
 
-4. 💧 GROUNDWATER EXTRACTION & AVAILABILITY:
-   - Ground Water Extraction for all uses (ham) - total extraction
-   - Annual Extractable Ground Water Resource (ham) - available resource
-   - Net Annual Ground Water Availability for Future Use (ham) - future availability
-   - Allocation for Domestic Utilisation for 2025 (ham) - projected domestic allocation
-   - Extraction efficiency and sustainability analysis
+4. FUTURE AVAILABILITY AND ALLOCATION:
+   - Net Annual Ground Water Availability for Future Use (C, NC, PQ, Total)
+   - Allocation of Ground Water Resource for Domestic Utilisation for projected year 2025 (C, NC, PQ, Total)
+   - Future sustainability projections
+   - Long-term resource management implications
 
-5. 🔬 WATER QUALITY & ENVIRONMENTAL CONCERNS:
-   - Quality Tagging - water quality issues (Present in 17,807 areas nationwide)
-     * Iron Contamination: 218 areas affected
-     * Uranium Contamination: 101 areas affected
-     * Nitrate Issues: 61 areas affected
-     * Coliform Contamination: 27 areas affected
-     * Combined Contamination: 19 areas with multiple issues
-   - Quality concerns and health implications based on specific contaminants
-   - Treatment recommendations for identified quality issues
+5. EXTRACTION STAGE ANALYSIS:
+   - Stage of Ground Water Extraction (%) (C, NC, PQ, Total)
+   - Sustainability indicators and over-extraction warnings
+   - Critical thresholds and management recommendations
+
+6. GEOGRAPHICAL AREA BREAKDOWN:
+   - Total Geographical Area (C, NC, PQ, Total)
+   - Recharge Worthy Area (C, NC, PQ, Total)
+   - Hilly Area (Total)
+   - Area utilization and recharge potential analysis
+
+7. ENVIRONMENTAL AND QUALITY DATA:
+   - Environmental Flows (C, NC, PQ, Total)
+   - Quality Tagging parameters (if available)
+   - Additional Potential Resources (if available)
    - Environmental sustainability considerations
-
-6. 🏖️ COASTAL & SPECIAL AREAS:
-   - Coastal Areas identification - Limited data (only 25 coastal areas identified nationwide)
-   - Additional Potential Resources under specific conditions (ham) - Limited data available
-   - Special management requirements for vulnerable areas (based on available data)
-   - Climate resilience considerations (general recommendations)
-
-7. 🏗️ GROUNDWATER STORAGE & RESOURCES:
-   - Instorage Unconfined Ground Water Resources (ham)
-   - Total Ground Water Availability in Unconfined Aquifer (ham)
-   - Dynamic Confined Ground Water Resources (ham)
-   - Instorage Confined Ground Water Resources (ham)
-   - Total Confined Ground Water Resources (ham)
-   - Dynamic Semi-confined Ground Water Resources (ham)
-   - Instorage Semi-confined Ground Water Resources (ham)
-   - Total Semi-confined Ground Water Resources (ham)
-   - Total Ground Water Availability in the Area (ham)
-
-8. 🌊 WATERSHED & ADMINISTRATIVE ANALYSIS:
-   - Watershed Category (safe, semi_critical, critical, over_exploited) - Available in 76.7% of records
-   - Administrative divisions (Block, Mandal, Village) - Available in 72.8%, 16.7%, 76.7% of records respectively
-   - Watershed-specific management recommendations based on available data
-   - Local governance and management structure (limited data available)
-   - NOTE: Tehsil data available in only 2.7% of records, Watershed District data in 66.6% of records
-
-ENHANCED INSIGHTS TO INCLUDE (Based on Complete Dataset Analysis - 162,632 records):
-
-NATIONAL OVERVIEW INSIGHTS (Always include for state-level queries):
-- 🌍 NATIONAL COVERAGE: 37 states, 796 districts, 7 years of data (2016-2024)
-- 📊 NATIONAL AVERAGE: 109.5% extraction rate (above sustainable limits)
-- 🚨 CRITICAL AREAS: 2,944 over-exploited + critical areas nationwide
-- ✅ SAFE AREAS: 86,147 areas (53% of total) in safe category
-- 🔬 WATER QUALITY: 17,807 areas with quality issues (Iron, Uranium, Nitrate, etc.)
-- 🏖️ COASTAL AREAS: 25 coastal areas identified requiring special attention
-
-WATER QUALITY INSIGHTS (Present in dataset - 17,807 areas with issues):
-- 🔬 IRON CONTAMINATION: 218 areas affected
-- ☢️ URANIUM CONTAMINATION: 101 areas affected  
-- 🧪 NITRATE ISSUES: 61 areas affected
-- 🦠 COLIFORM CONTAMINATION: 27 areas affected
-- 🔄 COMBINED CONTAMINATION: 19 areas with multiple issues
-
-EXTREME CASES ALERTS (Present in dataset):
-- ⚠️ MOST OVER-EXPLOITED: West Godavari, Andhra Pradesh (525,581% extraction!)
-- ✅ SAFEST REGION: Andaman & Nicobar Islands (0% extraction)
-- 🚨 HIGHEST RISK STATE: Punjab (176.1% average extraction)
-- 🏆 MODEL STATE: Arunachal Pradesh (0.7% average extraction)
-
-ADMINISTRATIVE HIERARCHY INSIGHTS (Present in dataset):
-- 🏘️ VILLAGE LEVEL: 29,746 unique villages (76.7% coverage)
-- 🏘️ BLOCK LEVEL: 5,857 unique blocks (72.8% coverage)
-- 🏘️ MANDAL LEVEL: 919 unique mandals (16.7% coverage)
-- 🏘️ TALUK LEVEL: 1,203 unique taluks (2.7% coverage)
-
-TEMPORAL TRENDS (Present in dataset - 7 years of data):
-- 📈 OVERALL TREND: Decreasing extraction rates (positive development)
-- 📊 PEAK YEAR: 2016 (761.89% average extraction)
-- 📊 CURRENT STATUS: 2024 (62.94% average extraction)
-- 📈 IMPROVEMENT: 91.7% reduction in average extraction rates
-
-CRITICALITY DISTRIBUTION (Present in dataset):
-- ✅ SAFE: 86,147 records (53.0%)
-- ⚠️ SEMI-CRITICAL: 9,265 records (5.7%)
-- 🚨 CRITICAL: 1,553 records (1.0%)
-- 🔴 OVER-EXPLOITED: 1,391 records (0.9%)
-- 🌊 SALINITY: 1,212 records (0.7%)
-
-GEOGRAPHIC INSIGHTS (Present in dataset):
-- 🗺️ LARGEST DATASET: Andhra Pradesh (71,573 records - 44.0%)
-- 🗺️ SECOND LARGEST: Telangana (53,518 records - 32.9%)
-- 🗺️ THIRD LARGEST: Tamil Nadu (7,456 records - 4.6%)
-- 🗺️ COVERAGE: All major states and union territories included
-
-REMOVED INSIGHTS (Data NOT present in dataset):
-- ❌ Watershed District data (66.6% missing)
-- ❌ Tehsil data (99.9% missing)
-- ❌ Detailed administrative hierarchy for most records
-- ❌ Comprehensive watershed management data
-- ❌ Detailed coastal area analysis (only 25 records)
 
 IMPORTANT: STATE-LEVEL QUERIES WITHOUT SPECIFIC DISTRICTS:
 - If the query mentions only a state (e.g., "ground water estimation in karnataka") without specifying districts, automatically select and analyze ALL available districts from that state in the dataset.
@@ -2323,56 +1135,18 @@ IMPORTANT: STATE-LEVEL QUERIES WITHOUT SPECIFIC DISTRICTS:
 - Present district-wise breakdowns in tables and provide state-level averages/summaries.
 - Mention which districts are included in the analysis and note if any districts are missing from the dataset.
 - For state-level queries, organize the report with:
-  a) NATIONAL OVERVIEW SECTION (Always include first):
-     🌍 NATIONAL GROUNDWATER OVERVIEW:
-     - Total Coverage: 37 states, 796 districts, 7 years of data (2016-2024)
-     - National Average Extraction: 109.5% (above sustainable limits)
-     - Critical Areas Nationwide: 2,944 over-exploited + critical areas
-     - Safe Areas Nationwide: 86,147 areas (53% of total)
-     - Water Quality Issues: 17,807 areas with contamination
-     - Most Over-exploited: West Godavari, AP (525,581% extraction)
-     - Safest Region: Andaman & Nicobar (0% extraction)
-  b) DATA AVAILABILITY SECTION (Always include):
-     📊 DATA AVAILABILITY & COVERAGE:
-     - Explain what data is available vs. missing for the specific state/region
-     - Note data coverage percentages where applicable
-     - Explain why certain fields show "No data available" with specific reasons:
-       * "administrative data not collected for this region" - for missing Taluk/Block/Mandal/Village data
-       * "storage data not measured/recorded" - for missing groundwater storage measurements
-       * "watershed categorization not available" - for missing watershed classification
-       * "water quality testing not conducted" - for missing quality data
-       * "not applicable - not a coastal area" - for coastal-specific data in non-coastal regions
-       * "data not collected/recorded" - for other missing data types
-     - Highlight any data quality issues or limitations
-     - Provide context about why certain data might be missing (e.g., different data collection practices across states)
-  c) Individual district analysis (detailed breakdown for each district)
-  d) State-level comprehensive summary (averages and totals across all districts)
-  e) Comparative analysis between districts within the state
+  a) Individual district analysis (detailed breakdown for each district)
+  b) State-level comprehensive summary (averages and totals across all districts)
+  c) Comparative analysis between districts within the state
 
 - Highlight key findings and trends.
 - Do NOT ask follow-up questions about what aspect of estimation the user is interested in. Provide a comprehensive summary of ALL available relevant metrics.
 - If data is missing for certain columns, mention that explicitly.
 - Format the output like a professional groundwater assessment report with proper markdown tables.
 - NEVER use pipe characters (|) or hyphens (-) as text - only use them for markdown table formatting.
-- ALWAYS include the 8 mandatory sections above in every groundwater estimation report.
-- IMPORTANT: Group multiple taluks under the same district. Do NOT repeat the same district name multiple times. If a district has multiple taluks, show them as sub-sections (1.1, 1.2, etc.) under the main district section.
+- ALWAYS include the 7 mandatory sections above in every groundwater estimation report.
 - If any section has no data, still include it with "No data available" and explain the implications.
-- FAILURE TO INCLUDE ALL 8 SECTIONS WILL RESULT IN AN INCOMPLETE REPORT.
-
-ADDITIONAL MANDATORY SECTIONS FOR STATE-LEVEL QUERIES:
-
-9. ⚠️ EXTREME CASES ALERTS (Always include for state-level queries):
-   - Most Over-exploited Areas: Highlight areas with >100% extraction
-   - Safest Areas: Highlight areas with <70% extraction  
-   - State Ranking: Compare state average to national average (109.5%)
-   - Risk Assessment: Categorize districts by risk level
-   - Success Stories: Identify best practices from safe areas
-
-10. 📊 NATIONAL CONTEXT (Always include for state-level queries):
-    - State's position in national ranking
-    - Comparison with similar states
-    - National trends affecting the state
-    - Policy implications based on national data
+- FAILURE TO INCLUDE ALL 7 SECTIONS WILL RESULT IN AN INCOMPLETE REPORT.
 """
         f"{conversation_history_str}"
         f"{extracted_params_str}"
@@ -2484,81 +1258,34 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     
     target_state = None
     target_district = None
-    
-    # Use improved location detection with synonyms and fuzzy matching
-    try:
-        from location_synonyms import extract_location_from_query
+    if _master_df is not None:
+        unique_states = _master_df['STATE'].unique().tolist()
+        unique_districts = _master_df['DISTRICT'].unique().tolist()
         
-        # Load INGRIS data for state extraction (use the same data as Qdrant)
-        try:
-            ingris_df = pd.read_csv("ingris_rag_ready_complete.csv", skiprows=1)
-            # Clean column names to match the structure
-            ingris_df.columns = [
-                'serial_number', 'state', 'district', 'island', 'watershed_district',
-                'rainfall_mm', 'total_geographical_area_ha', 'ground_water_recharge_ham',
-                'inflows_and_outflows_ham', 'annual_ground_water_recharge_ham',
-                'environmental_flows_ham', 'annual_extractable_ground_water_resource_ham',
-                'ground_water_extraction_for_all_uses_ham', 'stage_of_ground_water_extraction_',
-                'categorization_of_assessment_unit', 'pre_monsoon_of_gw_trend',
-                'post_monsoon_of_gw_trend', 'allocation_of_ground_water_resource_for_domestic_utilisation_for_projected_year_2025_ham',
-                'net_annual_ground_water_availability_for_future_use_ham', 'quality_tagging',
-                'additional_potential_resources_under_specific_conditionsham', 'coastal_areas',
-                'instorage_unconfined_ground_water_resourcesham', 'total_ground_water_availability_in_unconfined_aquifier_ham',
-                'dynamic_confined_ground_water_resourcesham', 'instorage_confined_ground_water_resourcesham',
-                'total_confined_ground_water_resources_ham', 'dynamic_semi_confined_ground_water_resources_ham',
-                'instorage_semi_confined_ground_water_resources_ham', 'total_semiconfined_ground_water_resources_ham',
-                'total_ground_water_availability_in_the_area_ham', 'source_file', 'year',
-                'tehsil', 'taluk', 'block', 'valley', 'assessment_unit', 'mandal',
-                'village', 'watershed_category', 'firka', 'combined_text'
-            ]
-            
-            unique_states = ingris_df['state'].dropna().unique().tolist()
-            unique_districts = ingris_df['district'].dropna().unique().tolist()
-            
-            # Use improved location detection
-            target_state, target_district = extract_location_from_query(
-                translated_query, unique_states, unique_districts, ingris_df
-            )
-            
-        except Exception as e:
-            print(f"Warning: Could not load INGRIS data for state extraction: {e}")
-            # Fallback to master_df if INGRIS data fails
-            if _master_df is not None:
-                unique_states = _master_df['STATE'].unique().tolist()
-                unique_districts = _master_df['DISTRICT'].unique().tolist()
-                
-                # Use improved location detection with master data
-                target_state, target_district = extract_location_from_query(
-                    translated_query, unique_states, unique_districts, _master_df
-                )
-                
-    except ImportError:
-        print("Warning: location_synonyms module not found, falling back to basic matching")
-        # Fallback to original logic if improved module is not available
-        if _master_df is not None:
-            unique_states = _master_df['STATE'].unique().tolist()
-            unique_districts = _master_df['DISTRICT'].unique().tolist()
-            
-            # Basic matching (original logic)
-            for state in unique_states:
-                if pd.notna(state):
-                    if re.search(r'\b' + re.escape(str(state)) + r'\b', translated_query, re.IGNORECASE):
-                        target_state = state
-                        break
-                    elif str(state).lower() in translated_query.lower():
-                        target_state = state
-                        break
+        # Try to find state with fuzzy matching
+        for state in unique_states:
+            if pd.notna(state):
+                # Exact match
+                if re.search(r'\b' + re.escape(str(state)) + r'\b', translated_query, re.IGNORECASE):
+                    target_state = state
+                    break
+                # Partial match
+                elif str(state).lower() in translated_query.lower():
+                    target_state = state
+                    break
 
-            if target_state:
-                districts_in_state = _master_df[_master_df['STATE'] == target_state]['DISTRICT'].unique().tolist()
-                for district in districts_in_state:
-                    if pd.notna(district):
-                        if re.search(r'\b' + re.escape(str(district)) + r'\b', translated_query, re.IGNORECASE):
-                            target_district = district
-                            break
-                        elif str(district).lower() in translated_query.lower():
-                            target_district = district
-                            break
+        if target_state:
+            districts_in_state = _master_df[_master_df['STATE'] == target_state]['DISTRICT'].unique().tolist()
+            for district in districts_in_state:
+                if pd.notna(district):
+                    # Exact match
+                    if re.search(r'\b' + re.escape(str(district)) + r'\b', translated_query, re.IGNORECASE):
+                        target_district = district
+                        break
+                    # Partial match
+                    elif str(district).lower() in translated_query.lower():
+                        target_district = district
+                        break
     
     # Enhanced NLP for extracting specific groundwater parameters
     extracted_parameters = {}
@@ -2588,31 +1315,32 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
                             except ValueError:
                                 continue
     
-    # Use advanced RAG pipeline with hybrid search, reranking, and query expansion
-    print("🚀 Using Advanced RAG Pipeline...")
-    candidate_results = advanced_search_with_rag(translated_query, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
+    expanded_terms = expand_query(translated_query)
+    expanded_query_text = f"{translated_query} {expanded_terms}".strip()
+    
+    candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
     
     # If no results found with location filters, try without location filters
     if not candidate_results:
-        print("⚠️ No results with location filters, trying without...")
-        candidate_results = advanced_search_with_rag(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+        candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+    
+    # If still no results, try with just the basic query without expansion
+    if not candidate_results:
+        candidate_results = search_excel_chunks(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
     # If still no results, try with original query (before translation)
     if not candidate_results:
-        print("⚠️ No results with translated query, trying original...")
-        candidate_results = advanced_search_with_rag(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+        candidate_results = search_excel_chunks(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
     # If still no results, try with common groundwater keywords
     if not candidate_results:
-        print("⚠️ No results found, trying fallback search...")
         groundwater_query = "groundwater estimation data analysis"
         candidate_results = search_excel_chunks(groundwater_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
     if not candidate_results:
         return "I couldn't find enough relevant information in the groundwater data to answer your question."
     
-    # Results are already reranked by the advanced RAG pipeline
-    re_ranked_results = candidate_results
+    re_ranked_results = re_rank_chunks(expanded_query_text, candidate_results, top_k=5)
     if not re_ranked_results:
         return "I couldn't find enough relevant information in the groundwater data to answer your question."
     
@@ -2637,65 +1365,6 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     # Translate answer back to user's language if needed
     if user_language != 'en':
         answer = translate_answer_to_language(answer, user_language)
-    
-    # Generate visualizations if data is available
-    try:
-        # Get data for visualization
-        data = get_groundwater_data(target_state, target_district)
-        
-        if data is not None and not data.empty:
-            # Generate visualizations
-            visualizations = {}
-            
-            # 1. Extraction Trends
-            if len(data) > 1:
-                fig = create_extraction_trends_chart(data)
-                visualizations["extraction_trends"] = base64.b64encode(
-                    pio.to_html(fig, include_plotlyjs=False).encode()
-                ).decode()
-            
-            # 2. Recharge Analysis
-            fig = create_recharge_analysis_chart(data)
-            visualizations["recharge_analysis"] = base64.b64encode(
-                pio.to_html(fig, include_plotlyjs=False).encode()
-            ).decode()
-            
-            # 3. District Comparison
-            if len(data) > 1:
-                fig = create_district_comparison_chart(data)
-                visualizations["district_comparison"] = base64.b64encode(
-                    pio.to_html(fig, include_plotlyjs=False).encode()
-                ).decode()
-            
-            # 4. Criticality Distribution
-            fig = create_criticality_distribution_chart(data)
-            visualizations["criticality_distribution"] = base64.b64encode(
-                pio.to_html(fig, include_plotlyjs=False).encode()
-            ).decode()
-            
-            # 5. Rainfall Correlation
-            fig = create_rainfall_correlation_chart(data)
-            visualizations["rainfall_correlation"] = base64.b64encode(
-                pio.to_html(fig, include_plotlyjs=False).encode()
-            ).decode()
-            
-            # 6. State Overview
-            fig = create_state_overview_chart(data)
-            visualizations["state_overview"] = base64.b64encode(
-                pio.to_html(fig, include_plotlyjs=False).encode()
-            ).decode()
-            
-            # Add visualization section to answer
-            if visualizations:
-                answer += "\n\n## 📊 Interactive Visualizations\n\n"
-                answer += "The following visualizations are available for this data:\n\n"
-                
-                for viz_type, viz_html in visualizations.items():
-                    viz_name = viz_type.replace('_', ' ').title()
-                    answer += f"### {viz_name}\n"
-                    answer += f"<div class='visualization-container'>{viz_html}</div>\n\n"
-    except Exception as e:
-        print(f"Warning: Could not generate visualizations: {e}")
     
     return answer
 
@@ -3597,311 +2266,6 @@ async def get_available_states():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/dropdown/states")
-async def get_dropdown_states():
-    """Get list of all available states for dropdown."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        states = _master_df['STATE'].dropna().unique().tolist()
-        states = [s for s in states if s and str(s).strip()]
-        states.sort()
-        
-        return {
-            "success": True,
-            "states": states,
-            "count": len(states)
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dropdown/districts")
-async def get_dropdown_districts():
-    """Get list of all available districts for dropdown."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        districts = _master_df['DISTRICT'].dropna().unique().tolist()
-        districts = [d for d in districts if d and str(d).strip()]
-        districts.sort()
-        
-        return {
-            "success": True,
-            "districts": districts,
-            "count": len(districts)
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dropdown/districts/{state}")
-async def get_districts_by_state(state: str):
-    """Get districts for a specific state."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        # Find districts for the given state
-        state_data = _master_df[_master_df['STATE'].str.upper() == state.upper()]
-        if state_data.empty:
-            raise HTTPException(status_code=404, detail=f"No data found for state: {state}")
-        
-        districts = state_data['DISTRICT'].dropna().unique().tolist()
-        districts = [d for d in districts if d and str(d).strip()]
-        districts.sort()
-        
-        return {
-            "success": True,
-            "state": state,
-            "districts": districts,
-            "count": len(districts)
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dropdown/hierarchical")
-async def get_hierarchical_data():
-    """Get hierarchical data (states with their districts)."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        hierarchical_data = {}
-        states = _master_df['STATE'].dropna().unique().tolist()
-        states = [s for s in states if s and str(s).strip()]
-        states.sort()
-        
-        for state in states:
-            state_data = _master_df[_master_df['STATE'] == state]
-            districts = state_data['DISTRICT'].dropna().unique().tolist()
-            districts = [d for d in districts if d and str(d).strip()]
-            districts.sort()
-            
-            hierarchical_data[state] = {
-                "districts": districts,
-                "district_count": len(districts)
-            }
-        
-        return {
-            "success": True,
-            "hierarchical": hierarchical_data,
-            "total_states": len(states),
-            "total_districts": sum(len(data["districts"]) for data in hierarchical_data.values())
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Enhanced Dropdown API with Taluk Support
-@app.get("/dropdown/taluks")
-async def get_dropdown_taluks():
-    """Get list of all available taluks for dropdown."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        # Load enhanced data for taluk information
-        try:
-            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
-            taluks = enhanced_df['taluk'].dropna().unique().tolist()
-            taluks = [t for t in taluks if t and str(t).strip()]
-            taluks.sort()
-        except FileNotFoundError:
-            # Fallback to master data if enhanced data not available
-            taluks = []
-        
-        return {
-            "success": True,
-            "taluks": taluks,
-            "count": len(taluks)
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dropdown/taluks/{state}")
-async def get_taluks_by_state(state: str):
-    """Get taluks for a specific state."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        # Load enhanced data for taluk information
-        try:
-            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
-            state_data = enhanced_df[enhanced_df['state'].str.upper() == state.upper()]
-            if state_data.empty:
-                raise HTTPException(status_code=404, detail=f"No data found for state: {state}")
-            
-            taluks = state_data['taluk'].dropna().unique().tolist()
-            taluks = [t for t in taluks if t and str(t).strip()]
-            taluks.sort()
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="Enhanced data not available")
-        
-        return {
-            "success": True,
-            "state": state,
-            "taluks": taluks,
-            "count": len(taluks)
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dropdown/taluks/{state}/{district}")
-async def get_taluks_by_district(state: str, district: str):
-    """Get taluks for a specific district in a state."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        # Load enhanced data for taluk information
-        try:
-            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
-            district_data = enhanced_df[
-                (enhanced_df['state'].str.upper() == state.upper()) & 
-                (enhanced_df['district'].str.upper() == district.upper())
-            ]
-            if district_data.empty:
-                raise HTTPException(status_code=404, detail=f"No data found for district: {district} in state: {state}")
-            
-            taluks = district_data['taluk'].dropna().unique().tolist()
-            taluks = [t for t in taluks if t and str(t).strip()]
-            taluks.sort()
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="Enhanced data not available")
-        
-        return {
-            "success": True,
-            "state": state,
-            "district": district,
-            "taluks": taluks,
-            "count": len(taluks)
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dropdown/enhanced-hierarchical")
-async def get_enhanced_hierarchical_data():
-    """Get enhanced hierarchical data (states with their districts and taluks)."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        # Load enhanced data for taluk information
-        try:
-            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
-            
-            hierarchical_data = {}
-            states = enhanced_df['state'].dropna().unique().tolist()
-            states = [s for s in states if s and str(s).strip()]
-            states.sort()
-            
-            for state in states:
-                state_data = enhanced_df[enhanced_df['state'] == state]
-                
-                # Get districts
-                districts = state_data['district'].dropna().unique().tolist()
-                districts = [d for d in districts if d and str(d).strip()]
-                districts.sort()
-                
-                # Get taluks
-                taluks = state_data['taluk'].dropna().unique().tolist()
-                taluks = [t for t in taluks if t and str(t).strip()]
-                taluks.sort()
-                
-                hierarchical_data[state] = {
-                    "districts": districts,
-                    "district_count": len(districts),
-                    "taluks": taluks,
-                    "taluk_count": len(taluks)
-                }
-            
-            return {
-                "success": True,
-                "hierarchical": hierarchical_data,
-                "total_states": len(states),
-                "total_districts": sum(len(data["districts"]) for data in hierarchical_data.values()),
-                "total_taluks": sum(len(data["taluks"]) for data in hierarchical_data.values())
-            }
-        except FileNotFoundError:
-            # Fallback to basic hierarchical data
-            return await get_hierarchical_data()
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/dropdown/taluk-data/{state}/{district}/{taluk}")
-async def get_taluk_data(state: str, district: str, taluk: str):
-    """Get detailed data for a specific taluk."""
-    try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
-        
-        # Load enhanced data for taluk information
-        try:
-            enhanced_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
-            
-            # Find data for the specific taluk
-            taluk_data = enhanced_df[
-                (enhanced_df['state'].str.upper() == state.upper()) & 
-                (enhanced_df['district'].str.upper() == district.upper()) &
-                (enhanced_df['taluk'].str.upper() == taluk.upper())
-            ]
-            
-            if taluk_data.empty:
-                raise HTTPException(status_code=404, detail=f"No data found for taluk: {taluk} in district: {district}, state: {state}")
-            
-            # Get the first record (assuming all records for a taluk have similar data)
-            record = taluk_data.iloc[0]
-            
-            return {
-                "success": True,
-                "state": state,
-                "district": district,
-                "taluk": taluk,
-                "data": {
-                    "stage_of_ground_water_extraction": record.get('stage_of_ground_water_extraction_', 'N/A'),
-                    "categorization": record.get('categorization_of_assessment_unit', 'N/A'),
-                    "rainfall_mm": record.get('rainfall_mm', 'N/A'),
-                    "ground_water_recharge_ham": record.get('ground_water_recharge_ham', 'N/A'),
-                    "ground_water_extraction_ham": record.get('ground_water_extraction_for_all_uses_ham', 'N/A'),
-                    "pre_monsoon_trend": record.get('pre_monsoon_of_gw_trend', 'N/A'),
-                    "post_monsoon_trend": record.get('post_monsoon_of_gw_trend', 'N/A'),
-                    "quality_tagging": record.get('quality_tagging', 'N/A'),
-                    "assessment_unit": record.get('assessment_unit', 'N/A'),
-                    "year": record.get('year', 'N/A')
-                }
-            }
-        except FileNotFoundError:
-            raise HTTPException(status_code=404, detail="Enhanced data not available")
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/analyze-location")
 async def analyze_location(request: dict):
     """Analyze groundwater data for a specific location (lat, lng)."""
@@ -4206,176 +2570,6 @@ def analyze_water_quality(record) -> Dict[str, Any]:
         "major_parameters": major_params_str,
         "other_parameters": other_params_str
     }
-
-# Visualization Functions
-def create_extraction_trends_chart(data):
-    """Create extraction trends chart."""
-    if data is None or data.empty:
-        return go.Figure()
-    
-    # Prepare data for extraction trends
-    if 'year' in data.columns and 'stage_of_ground_water_extraction_' in data.columns:
-        yearly_data = data.groupby('year')['stage_of_ground_water_extraction_'].mean().reset_index()
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=yearly_data['year'],
-            y=yearly_data['stage_of_ground_water_extraction_'],
-            mode='lines+markers',
-            name='Extraction Rate (%)',
-            line=dict(color='red', width=3)
-        ))
-        
-        fig.update_layout(
-            title="Groundwater Extraction Trends Over Time",
-            xaxis_title="Year",
-            yaxis_title="Extraction Rate (%)",
-            hovermode='x unified'
-        )
-    else:
-        fig = go.Figure()
-        fig.add_annotation(text="No trend data available", xref="paper", yref="paper", x=0.5, y=0.5)
-    
-    return fig
-
-def create_recharge_analysis_chart(data):
-    """Create recharge analysis chart."""
-    if data is None or data.empty:
-        return go.Figure()
-    
-    # Prepare data for recharge analysis
-    recharge_cols = [col for col in data.columns if 'recharge' in col.lower()]
-    if recharge_cols:
-        recharge_data = data[recharge_cols].mean()
-        
-        fig = go.Figure(data=[
-            go.Bar(x=recharge_data.index, y=recharge_data.values, name="Recharge (ham)")
-        ])
-        
-        fig.update_layout(
-            title="Groundwater Recharge Analysis",
-            xaxis_title="Recharge Type",
-            yaxis_title="Value (ham)"
-        )
-    else:
-        fig = go.Figure()
-        fig.add_annotation(text="No recharge data available", xref="paper", yref="paper", x=0.5, y=0.5)
-    
-    return fig
-
-def create_district_comparison_chart(data):
-    """Create district comparison chart."""
-    if data is None or data.empty:
-        return go.Figure()
-    
-    if 'district' in data.columns and 'stage_of_ground_water_extraction_' in data.columns:
-        district_data = data.groupby('district')['stage_of_ground_water_extraction_'].mean().reset_index()
-        
-        fig = go.Figure(data=[
-            go.Bar(x=district_data['district'], y=district_data['stage_of_ground_water_extraction_'], name="Extraction Rate (%)")
-        ])
-        
-        fig.update_layout(
-            title="District-wise Groundwater Extraction Comparison",
-            xaxis_title="District",
-            yaxis_title="Extraction Rate (%)",
-            xaxis_tickangle=-45
-        )
-    else:
-        fig = go.Figure()
-        fig.add_annotation(text="No district comparison data available", xref="paper", yref="paper", x=0.5, y=0.5)
-    
-    return fig
-
-def create_criticality_distribution_chart(data):
-    """Create criticality distribution chart."""
-    if data is None or data.empty:
-        return go.Figure()
-    
-    if 'groundwater_categorization' in data.columns:
-        criticality_counts = data['groundwater_categorization'].value_counts()
-        
-        fig = go.Figure(data=[
-            go.Pie(labels=criticality_counts.index, values=criticality_counts.values, name="Criticality Distribution")
-        ])
-        
-        fig.update_layout(
-            title="Groundwater Criticality Distribution"
-        )
-    else:
-        fig = go.Figure()
-        fig.add_annotation(text="No criticality data available", xref="paper", yref="paper", x=0.5, y=0.5)
-    
-    return fig
-
-def create_rainfall_correlation_chart(data):
-    """Create rainfall correlation chart."""
-    if data is None or data.empty:
-        return go.Figure()
-    
-    rainfall_cols = [col for col in data.columns if 'rainfall' in col.lower()]
-    if rainfall_cols and 'stage_of_ground_water_extraction_' in data.columns:
-        rainfall_data = data[rainfall_cols[0]]
-        extraction_data = data['stage_of_ground_water_extraction_']
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=rainfall_data,
-            y=extraction_data,
-            mode='markers',
-            name='Rainfall vs Extraction',
-            text=data.get('district', 'Unknown')
-        ))
-        
-        fig.update_layout(
-            title="Rainfall vs Groundwater Extraction Correlation",
-            xaxis_title="Rainfall (mm)",
-            yaxis_title="Extraction Rate (%)"
-        )
-    else:
-        fig = go.Figure()
-        fig.add_annotation(text="No rainfall correlation data available", xref="paper", yref="paper", x=0.5, y=0.5)
-    
-    return fig
-
-def create_state_overview_chart(data):
-    """Create state overview chart."""
-    if data is None or data.empty:
-        return go.Figure()
-    
-    # Create a comprehensive overview
-    metrics = []
-    values = []
-    
-    if 'stage_of_ground_water_extraction_' in data.columns:
-        metrics.append("Avg Extraction Rate")
-        values.append(data['stage_of_ground_water_extraction_'].mean())
-    
-    rainfall_cols = [col for col in data.columns if 'rainfall' in col.lower()]
-    if rainfall_cols:
-        metrics.append("Avg Rainfall")
-        values.append(data[rainfall_cols[0]].mean())
-    
-    recharge_cols = [col for col in data.columns if 'recharge' in col.lower()]
-    if recharge_cols:
-        metrics.append("Avg Recharge")
-        values.append(data[recharge_cols[0]].mean())
-    
-    if metrics:
-        fig = go.Figure(data=[
-            go.Bar(x=metrics, y=values, name="State Overview")
-        ])
-        
-        fig.update_layout(
-            title="State Groundwater Overview",
-            xaxis_title="Metrics",
-            yaxis_title="Values"
-        )
-    else:
-        fig = go.Figure()
-        fig.add_annotation(text="No overview data available", xref="paper", yref="paper", x=0.5, y=0.5)
-    
-    return fig
 
 def get_groundwater_data(state: str, district: Optional[str] = None, assessment_unit: Optional[str] = None) -> Dict[str, Any]:
     """
@@ -5307,174 +3501,14 @@ def get_state_from_coordinates(lat: float, lng: float) -> str:
     print(f"No state found for coordinates: lat={lat}, lng={lng}")
     return None
 
-# RAG Configuration Endpoints
-@app.get("/rag/config")
-async def get_rag_config():
-    """Get current RAG configuration parameters."""
-    return {
-        "hybrid_alpha": HYBRID_ALPHA,
-        "query_expansion_terms": QUERY_EXPANSION_TERMS,
-        "rerank_min_similarity": RERANK_MIN_SIMILARITY,
-        "min_similarity_score": MIN_SIMILARITY_SCORE,
-        "diversification_threshold": DIVERSIFICATION_THRESHOLD
-    }
-
-@app.post("/rag/test-thresholds")
-async def test_progressive_thresholds(request: dict):
-    """Test progressive thresholds from 0.1 to 0.7 for a given query."""
-    query = request.get("query", "")
-    if not query:
-        return {"error": "Query is required"}
-    
-    thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
-    results = {}
-    
-    for threshold in thresholds:
-        try:
-            # Use the advanced search with custom threshold
-            candidate_results = hybrid_search(query, None, None, None, None)
-            if candidate_results:
-                final_results = advanced_rerank_with_threshold(query, candidate_results, threshold)
-                results[f"threshold_{threshold}"] = {
-                    "threshold": threshold,
-                    "result_count": len(final_results),
-                    "success": len(final_results) > 0
-                }
-            else:
-                results[f"threshold_{threshold}"] = {
-                    "threshold": threshold,
-                    "result_count": 0,
-                    "success": False
-                }
-        except Exception as e:
-            results[f"threshold_{threshold}"] = {
-                "threshold": threshold,
-                "result_count": 0,
-                "success": False,
-                "error": str(e)
-            }
-    
-    return {
-        "query": query,
-        "threshold_results": results,
-        "recommended_threshold": max([t for t in thresholds if results[f"threshold_{t}"]["success"]], default=0.1)
-    }
-
-@app.post("/rag/config")
-async def update_rag_config(config: dict):
-    """Update RAG configuration parameters."""
-    global HYBRID_ALPHA, QUERY_EXPANSION_TERMS, RERANK_MIN_SIMILARITY, MIN_SIMILARITY_SCORE, DIVERSIFICATION_THRESHOLD
-    
-    if "hybrid_alpha" in config:
-        HYBRID_ALPHA = max(0.0, min(1.0, config["hybrid_alpha"]))
-    if "query_expansion_terms" in config:
-        QUERY_EXPANSION_TERMS = max(0, min(10, config["query_expansion_terms"]))
-    if "rerank_min_similarity" in config:
-        RERANK_MIN_SIMILARITY = max(0.0, min(1.0, config["rerank_min_similarity"]))
-    if "min_similarity_score" in config:
-        MIN_SIMILARITY_SCORE = max(0.0, min(1.0, config["min_similarity_score"]))
-    if "diversification_threshold" in config:
-        DIVERSIFICATION_THRESHOLD = max(0.0, min(1.0, config["diversification_threshold"]))
-    
-    return {
-        "message": "RAG configuration updated successfully",
-        "new_config": {
-            "hybrid_alpha": HYBRID_ALPHA,
-            "query_expansion_terms": QUERY_EXPANSION_TERMS,
-            "rerank_min_similarity": RERANK_MIN_SIMILARITY,
-            "min_similarity_score": MIN_SIMILARITY_SCORE,
-            "diversification_threshold": DIVERSIFICATION_THRESHOLD
-        }
-    }
-
 # INGRES ChatBOT Endpoints
-@app.post("/ingres/advanced-query", response_model=GroundwaterResponse)
-async def advanced_query_groundwater_data(request: GroundwaterQuery):
-    """
-    Advanced query endpoint using hybrid search, reranking, and query expansion.
-    This endpoint demonstrates the enhanced RAG capabilities.
-    """
-    try:
-        print(f"🚀 Advanced RAG Query: {request.query}")
-        
-        # Use the enhanced answer_query function for consistent formatting
-        user_lang = request.language or detect_language(request.query)
-        analysis_text = answer_query(request.query, user_lang, request.user_id)
-        
-        # Extract state from query if not provided
-        if not request.state:
-            # Try to extract state from query text using Gemini
-            if _gemini_model:
-                try:
-                    prompt = f"""
-                    Extract the Indian state name from this query: "{request.query}"
-                    
-                    Return only the state name, nothing else.
-                    If no state is mentioned, return "None".
-                    """
-                    response = _gemini_model.generate_content(prompt)
-                    extracted_state = response.text.strip()
-                    if extracted_state and extracted_state.lower() != "none":
-                        request.state = extracted_state
-                except Exception as e:
-                    print(f"Error extracting state from query: {e}")
-        
-        # If still no state, try to find a state in the query text
-        if not request.state:
-            query_lower = request.query.lower()
-            indian_states = [
-                "andhra pradesh", "arunachal pradesh", "assam", "bihar", "chhattisgarh",
-                "goa", "gujarat", "haryana", "himachal pradesh", "jharkhand", "karnataka",
-                "kerala", "madhya pradesh", "maharashtra", "manipur", "meghalaya", "mizoram",
-                "nagaland", "odisha", "punjab", "rajasthan", "sikkim", "tamil nadu",
-                "telangana", "tripura", "uttar pradesh", "uttarakhand", "west bengal",
-                "delhi", "chandigarh", "puducherry", "jammu and kashmir", "ladakh"
-            ]
-            
-            for state in indian_states:
-                if state in query_lower:
-                    request.state = state.title()
-                    break
-        
-        return GroundwaterResponse(
-            success=True,
-            response=analysis_text,
-            state=request.state,
-            district=request.district,
-            year=request.year,
-            language=user_lang,
-            query=request.query,
-            user_id=request.user_id,
-            timestamp=pd.Timestamp.now().isoformat(),
-            rag_method="advanced_hybrid_rerank"
-        )
-        
-    except Exception as e:
-        print(f"❌ Advanced query error: {str(e)}")
-        return GroundwaterResponse(
-            success=False,
-            response=f"Error processing advanced query: {str(e)}",
-            state=request.state,
-            district=request.district,
-            year=request.year,
-            language=request.language or 'en',
-            query=request.query,
-            user_id=request.user_id,
-            timestamp=pd.Timestamp.now().isoformat(),
-            rag_method="advanced_hybrid_rerank"
-        )
-
 @app.post("/ingres/query", response_model=GroundwaterResponse)
 async def query_groundwater_data(request: GroundwaterQuery):
     """
-    Query groundwater data using INGRES ChatBOT with enhanced table formatting.
-    Uses the updated answer_query function for consistent table formatting.
+    Query groundwater data using INGRES ChatBOT.
+    Provides intelligent analysis with criticality assessment and recommendations.
     """
     try:
-        # Use the enhanced answer_query function for consistent formatting
-        user_lang = request.language or detect_language(request.query)
-        analysis_text = answer_query(request.query, user_lang, request.user_id)
-        
         # Extract state from query if not provided
         if not request.state:
             # Try to extract state from query text using Gemini
@@ -5510,28 +3544,21 @@ async def query_groundwater_data(request: GroundwaterQuery):
                     request.state = state.title()
                     break
         
-        # Get groundwater data for additional metadata
+        # Get groundwater data
         data = get_groundwater_data(
             state=request.state,
             district=request.district,
             assessment_unit=request.assessment_unit
         )
         
-        # Create enhanced data structure with the formatted analysis
-        enhanced_data = {
-            "analysis": analysis_text,
-            "state": request.state or "Unknown",
-            "district": request.district,
-            "assessment_unit": request.assessment_unit,
-            "query": request.query,
-            "language": user_lang
-        }
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
         
         # Generate recommendations
         quality_issues = data.get("quality_analysis", {}).get("issues", []) if data.get("quality_analysis") else []
         recommendations = generate_groundwater_recommendations(
-            status=data.get("criticality_status", "Unknown"),
-            extraction_percentage=data.get("extraction_stage", 0),
+            status=data["criticality_status"],
+            extraction_percentage=data["extraction_stage"],
             quality_issues=quality_issues
         )
         
@@ -5541,33 +3568,33 @@ async def query_groundwater_data(request: GroundwaterQuery):
             visualizations = create_groundwater_visualizations(data)
         
         # Get comparison data
-        comparison_data = get_state_comparison_data(request.state or "Unknown")
+        comparison_data = get_state_comparison_data(data["state"])
         
         # Generate enhanced statistics
         enhanced_stats = generate_enhanced_statistics()
         
         # Prepare numerical values
         numerical_values = {
-            "extraction_stage": data.get("extraction_stage", 0),
-            "annual_recharge": data.get("annual_recharge", 0),
-            "extractable_resource": data.get("extractable_resource", 0),
-            "total_extraction": data.get("total_extraction", 0),
-            "future_availability": data.get("future_availability", 0),
-            "rainfall": data.get("rainfall", 0),
-            "total_area": data.get("total_area", 0)
+            "extraction_stage": data["extraction_stage"],
+            "annual_recharge": data["annual_recharge"],
+            "extractable_resource": data["extractable_resource"],
+            "total_extraction": data["total_extraction"],
+            "future_availability": data["future_availability"],
+            "rainfall": data["rainfall"],
+            "total_area": data["total_area"]
         }
         
         return GroundwaterResponse(
-            data=enhanced_data,
-            criticality_status=data.get("criticality_status", "Unknown"),
-            criticality_emoji=data.get("criticality_emoji", "❓"),
+            data=data,
+            criticality_status=data["criticality_status"],
+            criticality_emoji=data["criticality_emoji"],
             numerical_values=numerical_values,
             recommendations=recommendations,
             visualizations=visualizations,
             comparison_data=comparison_data,
-            quality_analysis=data.get("quality_analysis", {}),
-            additional_resources=data.get("additional_resources", []),
-            key_findings_trends=data.get("key_findings_trends", []),
+            quality_analysis=data["quality_analysis"],
+            additional_resources=data.get("additional_resources"),
+            key_findings_trends=data.get("key_findings_trends"),
             enhanced_statistics=enhanced_stats
         )
         
@@ -5894,114 +3921,5 @@ async def startup_event():
     except Exception as e:
         print(f"❌ Startup error: {e}")
         print("⚠️ Continuing with limited functionality...")
-
-# Visualization endpoints
-@app.get("/visualize/types")
-async def get_visualization_types():
-    """Get available visualization types."""
-    return {
-        "types": [
-            "extraction_trends",
-            "recharge_analysis", 
-            "district_comparison",
-            "criticality_distribution",
-            "rainfall_correlation",
-            "state_overview"
-        ]
-    }
-
-@app.post("/visualize/groundwater")
-async def generate_groundwater_visualization(request: GroundwaterQuery):
-    """Generate groundwater visualizations based on query."""
-    try:
-        # Get data for visualization
-        data = get_groundwater_data(
-            state=request.state,
-            district=request.district,
-            assessment_unit=request.assessment_unit
-        )
-        
-        if data is None or data.empty:
-            return {"error": "No data available for visualization"}
-        
-        # Generate visualizations
-        visualizations = {}
-        
-        # 1. Extraction Trends
-        if len(data) > 1:
-            fig = create_extraction_trends_chart(data)
-            visualizations["extraction_trends"] = base64.b64encode(
-                pio.to_html(fig, include_plotlyjs=False).encode()
-            ).decode()
-        
-        # 2. Recharge Analysis
-        fig = create_recharge_analysis_chart(data)
-        visualizations["recharge_analysis"] = base64.b64encode(
-            pio.to_html(fig, include_plotlyjs=False).encode()
-        ).decode()
-        
-        # 3. District Comparison
-        if len(data) > 1:
-            fig = create_district_comparison_chart(data)
-            visualizations["district_comparison"] = base64.b64encode(
-                pio.to_html(fig, include_plotlyjs=False).encode()
-            ).decode()
-        
-        # 4. Criticality Distribution
-        fig = create_criticality_distribution_chart(data)
-        visualizations["criticality_distribution"] = base64.b64encode(
-            pio.to_html(fig, include_plotlyjs=False).encode()
-        ).decode()
-        
-        # 5. Rainfall Correlation
-        fig = create_rainfall_correlation_chart(data)
-        visualizations["rainfall_correlation"] = base64.b64encode(
-            pio.to_html(fig, include_plotlyjs=False).encode()
-        ).decode()
-        
-        # 6. State Overview
-        fig = create_state_overview_chart(data)
-        visualizations["state_overview"] = base64.b64encode(
-            pio.to_html(fig, include_plotlyjs=False).encode()
-        ).decode()
-        
-        return {"visualizations": visualizations}
-        
-    except Exception as e:
-        return {"error": f"Failed to generate visualizations: {str(e)}"}
-
-@app.get("/visualize/download/{viz_type}")
-async def download_visualization(viz_type: str, state: str = None, district: str = None):
-    """Download a specific visualization as HTML file."""
-    try:
-        # Get data
-        data = get_groundwater_data(state=state, district=district)
-        
-        if data is None or data.empty:
-            raise HTTPException(status_code=404, detail="No data available")
-        
-        # Generate specific visualization
-        if viz_type == "extraction_trends":
-            fig = create_extraction_trends_chart(data)
-        elif viz_type == "recharge_analysis":
-            fig = create_recharge_analysis_chart(data)
-        elif viz_type == "district_comparison":
-            fig = create_district_comparison_chart(data)
-        elif viz_type == "criticality_distribution":
-            fig = create_criticality_distribution_chart(data)
-        elif viz_type == "rainfall_correlation":
-            fig = create_rainfall_correlation_chart(data)
-        elif viz_type == "state_overview":
-            fig = create_state_overview_chart(data)
-        else:
-            raise HTTPException(status_code=400, detail="Invalid visualization type")
-        
-        # Convert to HTML
-        html_content = pio.to_html(fig, include_plotlyjs=True)
-        
-        return {"html_content": html_content}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 # Run with: uvicorn main:app --reload --port 8000
