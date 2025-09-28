@@ -287,55 +287,88 @@ def initialize_sentence_transformer():
                 return False
 
 def _init_components():
+    """Ultra-fast startup - only initialize absolutely essential components"""
     global _qdrant_client, _model, _nlp, _gemini_model, _master_df, _translator_model, _translator_tokenizer, _indic_processor
+    
+    print("Starting application...")
+    
+    # Only load CSV data for state extraction (fastest essential component)
+    if _master_df is None:
+        try:
+            print("Loading data...")
+            _master_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
+            _master_df['STATE'] = _master_df['state'].fillna('').astype(str)
+            _master_df['DISTRICT'] = _master_df['district'].fillna('').astype(str)
+            _master_df['ASSESSMENT UNIT'] = _master_df['assessment_unit'].fillna('').astype(str)
+            print("Data ready")
+        except FileNotFoundError:
+            raise Exception("Error: ingris_rag_ready_complete.csv not found.")
+        except Exception as e:
+            raise Exception(f"Error loading data: {str(e)}")
+    
+    print("Application ready - other components will load on demand")
+
+def _init_qdrant():
+    """Initialize Qdrant client when needed"""
+    global _qdrant_client
+    
     if _qdrant_client is None:
         try:
-            print(f"🔄 Connecting to Qdrant at {QDRANT_URL}...")
+            print("Connecting to Qdrant...")
             _qdrant_client = QdrantClient(
                 url=QDRANT_URL, 
                 api_key=QDRANT_API_KEY if QDRANT_API_KEY else None, 
                 timeout=30,
-                prefer_grpc=False  # Use HTTP instead of gRPC for better compatibility
+                prefer_grpc=False
             )
-            # Test the connection
-            _qdrant_client.get_collections()
-            print("✅ Qdrant connection established")
+            print("Qdrant ready")
         except Exception as e:
-            print(f"❌ Failed to initialize Qdrant client: {str(e)}")
-            print("⚠️ Continuing without Qdrant - some features will be limited")
+            print(f"Qdrant failed: {str(e)}")
             _qdrant_client = None
-    if _model is None:
-        if not initialize_sentence_transformer():
-            print("Warning: Dense embeddings are disabled (SentenceTransformer failed). Falling back to BM25-only search.")
-    if _nlp is None:
-        try:
-            _nlp = spacy.load("en_core_web_sm")
-        except Exception as e:
-            print(f"Warning: Failed to initialize spaCy NLP model: {str(e)}. Some features may be limited.")
-            _nlp = None
-    print(f"🔍 Debug: _gemini_model before check: {_gemini_model is not None}")
-    print(f"🔍 Debug: GEMINI_API_KEY exists: {GEMINI_API_KEY is not None}")
+
+def _init_gemini():
+    """Initialize Gemini when needed"""
+    global _gemini_model
     
     if _gemini_model is None and GEMINI_API_KEY:
         try:
-            print(f"🔄 Initializing Gemini with API key: {GEMINI_API_KEY[:10]}...")
+            print("Initializing Gemini...")
             genai.configure(api_key=GEMINI_API_KEY)
             _gemini_model = genai.GenerativeModel('models/gemini-2.0-flash')
-            print(f"✅ Gemini model initialized successfully: {_gemini_model is not None}")
-            print(f"🔍 Debug: _gemini_model after assignment: {_gemini_model is not None}")
+            print("Gemini ready")
         except Exception as e:
-            print(f"❌ Failed to initialize Gemini API: {str(e)}")
+            print(f"Gemini failed: {str(e)}")
             _gemini_model = None
-    elif _gemini_model is None:
-        print("⚠️ Gemini API key not found, using fallback mode")
-    else:
-        print("✅ Gemini model already initialized")
+
+def _init_ml_components():
+    """Initialize ML components when needed (lazy loading)"""
+    global _model, _nlp
     
-    print(f"🔍 Debug: _gemini_model at end of function: {_gemini_model is not None}")
-    # Skip translator model loading for now to speed up startup
-    # This can be loaded later when needed
-    if False:  # Disabled for faster startup
+    # Initialize SentenceTransformer only when needed
+    if _model is None:
         try:
+            print("Loading embedding model...")
+            if not initialize_sentence_transformer():
+                print("Warning: Dense embeddings disabled")
+        except Exception as e:
+            print(f"Embedding model failed: {e}")
+    
+    # Initialize spaCy only when needed
+    if _nlp is None:
+        try:
+            print("Loading NLP model...")
+            _nlp = spacy.load("en_core_web_sm")
+        except Exception as e:
+            print(f"NLP model failed: {e}")
+            _nlp = None
+
+def _init_translator():
+    """Initialize translator components when needed (lazy loading)"""
+    global _translator_model, _translator_tokenizer, _indic_processor
+    
+    if _translator_model is None:
+        try:
+            print("Loading translator...")
             model_name = "ai4bharat/indictrans2-en-indic-1B"
             _translator_tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
             _translator_model = AutoModelForSeq2SeqLM.from_pretrained(
@@ -349,18 +382,7 @@ def _init_components():
             else:
                 _indic_processor = None
         except Exception as e:
-            print(f"Warning: Failed to initialize IndicTrans2 translator: {e}")
-    if _master_df is None:
-        try:
-            _master_df = pd.read_csv("master_groundwater_data.csv", low_memory=False)
-            _master_df['STATE'] = _master_df['STATE'].fillna('').astype(str)
-            _master_df['DISTRICT'] = _master_df['DISTRICT'].fillna('').astype(str)
-            _master_df['ASSESSMENT UNIT'] = _master_df['ASSESSMENT UNIT'].fillna('').astype(str)
-            _master_df['combined_text'] = _master_df.apply(create_detailed_combined_text, axis=1)
-        except FileNotFoundError:
-            raise Exception("Error: master_groundwater_data.csv not found. Please run excel_ingestor.py first.")
-        except Exception as e:
-            raise Exception(f"Error loading master groundwater data: {str(e)}")
+            print(f"Translator failed: {e}")
 
 def create_detailed_combined_text(row):
     """Generates a detailed combined text string for a DataFrame row."""
@@ -484,7 +506,7 @@ def setup_collection():
     """Create Qdrant collection if it doesn't exist and ensure indexes for year, state, and district"""
     try:
         if _qdrant_client is None:
-            print("⚠️ Qdrant client not available, skipping collection setup")
+            print("[WARNING] Qdrant client not available, skipping collection setup")
             return False
             
         collections = _qdrant_client.get_collections()
@@ -505,8 +527,8 @@ def setup_collection():
                 collection_info = _qdrant_client.get_collection(COLLECTION_NAME)
                 current_size = collection_info.config.params.vectors.size
                 if current_size != VECTOR_SIZE:
-                    print(f"🔄 Vector size mismatch detected. Current: {current_size}, Required: {VECTOR_SIZE}")
-                    print("⚠️ Please delete and recreate the collection manually or use the migration script.")
+                    print(f"[INIT] Vector size mismatch detected. Current: {current_size}, Required: {VECTOR_SIZE}")
+                    print("[WARNING] Please delete and recreate the collection manually or use the migration script.")
             except Exception as e:
                 print(f"Warning: Could not check collection vector size: {e}")
             print(f"Using existing collection: {COLLECTION_NAME}")
@@ -577,7 +599,7 @@ def upload_excel_to_qdrant(df_to_upload, batch_size=1000):
             total_uploaded += len(points)
             print(f"Uploaded {total_uploaded}/{len(df_to_upload)} records...")
         
-        print(f"✅ All {total_uploaded} Excel rows uploaded to Qdrant.")
+        print(f"[OK] All {total_uploaded} Excel rows uploaded to Qdrant.")
         return True
     except Exception as e:
         print(f"Error uploading Excel data to Qdrant: {str(e)}")
@@ -752,19 +774,13 @@ def translate_answer_to_language(answer: str, target_lang: str) -> str:
     return translate_text(answer, target_lang, 'en')
 
 def expand_query(query_text):
-    """Expand query with synonyms and related terms for better matching."""
-    # Query expansion mappings
+    """Expand query with minimal synonyms for better matching."""
+    # Simplified query expansion - only essential terms
     expansions = {
-        'groundwater': ['ground water', 'aquifer', 'water table', 'subsurface water'],
-        'estimation': ['assessment', 'evaluation', 'calculation', 'analysis'],
-        'rainfall': ['precipitation', 'rain', 'monsoon'],
-        'extraction': ['withdrawal', 'pumping', 'usage', 'consumption'],
-        'recharge': ['replenishment', 'infiltration', 'percolation'],
-        'karnataka': ['karnataka state', 'bangalore', 'bengaluru'],
-        'maharashtra': ['maharashtra state', 'mumbai', 'pune'],
-        'tamil nadu': ['tamil nadu state', 'chennai', 'madras'],
-        'gujarat': ['gujarat state', 'ahmedabad', 'gandhinagar'],
-        'rajasthan': ['rajasthan state', 'jaipur', 'jodhpur']
+        'groundwater': ['ground water'],
+        'estimation': ['assessment', 'analysis'],
+        'odisha': ['orissa'],  # Add Odisha/Orissa mapping
+        'orissa': ['odisha']   # Add reverse mapping
     }
     
     expanded_terms = [query_text]
@@ -775,13 +791,15 @@ def expand_query(query_text):
         if term in query_lower:
             expanded_terms.extend(synonyms)
     
-    # Create expanded query
-    expanded_query = " ".join(expanded_terms)
+    # Create expanded query (limit to avoid overly complex queries)
+    expanded_query = " ".join(expanded_terms[:3])  # Limit to 3 terms max
     return expanded_query
 
 def search_excel_chunks(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
     """Simple, reliable search using the working method from karnataka_search.py"""
-    _init_components()
+    _init_components()  # Load CSV data
+    _init_qdrant()      # Load Qdrant when needed
+    _init_ml_components()  # Load ML components when needed for search
     
     try:
         # Create query vector using the working method
@@ -803,10 +821,20 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
             )
         
         if target_state:
+            # Normalize state name for better matching
+            state_name = target_state.upper().strip()
+            # Handle common variations
+            if state_name in ['ORISSA', 'ODISHA']:
+                state_name = 'ODISHA'
+            elif state_name in ['TAMILNADU', 'TAMIL NADU']:
+                state_name = 'TAMILNADU'
+            elif state_name in ['WEST BENGAL', 'WESTBENGAL']:
+                state_name = 'WEST BENGAL'
+            
             qdrant_filter_conditions.append(
                 FieldCondition(
                     key="STATE",
-                    match=MatchValue(value=target_state.upper())
+                    match=MatchValue(value=state_name)
                 )
             )
         
@@ -820,15 +848,30 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
         
         qdrant_filter = Filter(must=qdrant_filter_conditions) if qdrant_filter_conditions else None
         
-        # Simple search with very low threshold to ensure results
-        results = _qdrant_client.search(
-            collection_name=COLLECTION_NAME,
-            query_vector=query_vector,
-            query_filter=qdrant_filter,
-            limit=20,
-            with_payload=True,
-            score_threshold=0.0  # Very low threshold to get results
-        )
+        # Use the new query_points method with retry logic
+        max_retries = 3
+        results = None
+        
+        for attempt in range(max_retries):
+            try:
+                results = _qdrant_client.query_points(
+                    collection_name=COLLECTION_NAME,
+                    query=query_vector,
+                    query_filter=qdrant_filter,
+                    limit=20,
+                    with_payload=True
+                )
+                break  # Success, exit retry loop
+            except Exception as e:
+                print(f"Search attempt {attempt + 1} failed: {str(e)}")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(2)  # Wait 2 seconds before retry
+                else:
+                    raise e
+        
+        # Convert to the expected format
+        results = results.points if hasattr(results, 'points') else results
         
         # Format results in the expected format
         results_with_payloads = []
@@ -838,32 +881,27 @@ def search_excel_chunks(query_text, year=None, target_state=None, target_distric
                 "data": hit.payload
             })
         
-        # If no results and we have a state filter, try without state filter as fallback
+        # Debug information
+        print(f"[DEBUG] Search completed for state: {target_state}")
+        print(f"[DEBUG] Results found: {len(results_with_payloads)}")
+        if results_with_payloads:
+            sample_state = results_with_payloads[0]['data'].get('STATE', 'N/A')
+            print(f"[DEBUG] Sample result state: {sample_state}")
+        
+        # If no results and we have a state filter, don't use fallback automatically
+        # This prevents returning data from other states when user specifically asks for a state
         if not results_with_payloads and target_state:
-            print(f"⚠️ No results found for {target_state}, trying broader search...")
-            try:
-                # Try without state filter
-                fallback_results = _qdrant_client.search(
-                    collection_name=COLLECTION_NAME,
-                    query_vector=query_vector,
-                    limit=10,
-                    with_payload=True,
-                    score_threshold=0.0
-                )
-                
-                for hit in fallback_results[:5]:
-                    results_with_payloads.append({
-                        "score": hit.score,
-                        "data": hit.payload
-                    })
-                print(f"✅ Fallback found {len(results_with_payloads)} results")
-            except Exception as fallback_error:
-                print(f"❌ Fallback search failed: {fallback_error}")
+            print(f"[WARNING] No results found for {target_state}")
+            # Don't automatically fallback to other states - let the calling function decide
         
         return results_with_payloads
 
     except Exception as e:
         print(f"Error performing search: {str(e)}")
+        # If Qdrant is not available, return empty results
+        if _qdrant_client is None:
+            print("Qdrant not available, returning empty results")
+            return []
         return []
 
 def re_rank_chunks(query_text, candidate_results, top_k=5):
@@ -1065,7 +1103,7 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
         f"You are an expert groundwater data analyst. Provide a comprehensive, well-formatted summary of the groundwater data.{language_instruction}\n"
         f"""FORMAT THE OUTPUT EXACTLY AS FOLLOWS:
 
-# 💧 Groundwater Data Analysis Report
+#  Groundwater Data Analysis Report
 
 ## Query
 **Question:** [USER'S QUERY]
@@ -1131,7 +1169,7 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 #### [DISTRICT NUMBER].[TALUK NUMBER]. [TALUK NAME] Taluk
 
-#### 1. 🚨 CRITICALITY ALERT & SUSTAINABILITY STATUS:
+#### 1.  CRITICALITY ALERT & SUSTAINABILITY STATUS:
 
 | Parameter | Value | Unit | Significance |
 |-----------|-------|------|--------------|
@@ -1142,7 +1180,7 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 **Sustainability Indicators:** [DETAILED EXPLANATION OF SUSTAINABILITY STATUS]
 
-#### 2. 📈 GROUNDWATER TREND ANALYSIS:
+#### 2.  GROUNDWATER TREND ANALYSIS:
 
 | Parameter | Value |
 |-----------|-------|
@@ -1153,7 +1191,7 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 **Seasonal Variation Analysis:** [ANALYSIS OF SEASONAL VARIATIONS]
 
-#### 3. 🌧️ RAINFALL & RECHARGE DATA:
+#### 3. [RAIN] RAINFALL & RECHARGE DATA:
 
 | Parameter | Value | Unit | Significance |
 |-----------|-------|------|--------------|
@@ -1164,7 +1202,7 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 **Significance:** [DETAILED EXPLANATION OF RAINFALL AND RECHARGE SIGNIFICANCE]
 
-#### 4. 💧 GROUNDWATER EXTRACTION & AVAILABILITY:
+#### 4.  GROUNDWATER EXTRACTION & AVAILABILITY:
 
 | Parameter | Value | Unit | Significance |
 |-----------|-------|------|--------------|
@@ -1175,7 +1213,7 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 **Extraction Efficiency:** [DETAILED ANALYSIS OF EXTRACTION EFFICIENCY]
 
-#### 5. 🔬 WATER QUALITY & ENVIRONMENTAL CONCERNS:
+#### 5.  WATER QUALITY & ENVIRONMENTAL CONCERNS:
 
 | Parameter | Value |
 |-----------|-------|
@@ -1187,7 +1225,7 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 **Environmental Sustainability:** [ASSESSMENT OF ENVIRONMENTAL SUSTAINABILITY]
 
-#### 6. 🏖️ COASTAL & SPECIAL AREAS:
+#### 6. [COASTAL] COASTAL & SPECIAL AREAS:
 
 | Parameter | Value |
 |-----------|-------|
@@ -1198,7 +1236,7 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 **Climate Resilience Considerations:** [CLIMATE RESILIENCE ANALYSIS]
 
-#### 7. 🏗️ GROUNDWATER STORAGE & RESOURCES:
+#### 7. [STORAGE] GROUNDWATER STORAGE & RESOURCES:
 
 | Parameter | Value | Unit |
 |-----------|-------|------|
@@ -1214,7 +1252,7 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 **Storage Analysis:** [DETAILED ANALYSIS OF GROUNDWATER STORAGE]
 
-#### 8. 🌊 WATERSHED & ADMINISTRATIVE ANALYSIS:
+#### 8.  WATERSHED & ADMINISTRATIVE ANALYSIS:
 
 | Parameter | Value |
 |-----------|-------|
@@ -1255,7 +1293,7 @@ IMPORTANT INSTRUCTIONS:
         response = _gemini_model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
-        return f"❌ Error from Gemini: {str(e)}"
+        return f"[ERROR] Error from Gemini: {str(e)}"
 
 # --- Authentication & Chat History Persistence ---
 def hash_password(password: str) -> str:
@@ -1339,7 +1377,10 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     if not query:
         return "Please provide a question."
     try:
-        _init_components()
+        _init_components()  # Load CSV data
+        _init_qdrant()      # Load Qdrant when needed
+        _init_gemini()      # Load Gemini when needed
+        _init_ml_components()  # Load ML components when needed
     except Exception as e:
         return f"Initialization error: {str(e)}"
     
@@ -1354,21 +1395,58 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     
     target_state = None
     target_district = None
-    if _master_df is not None:
+    print(f"[DEBUG] Extracting location from query: '{translated_query}'")
+    
+    # Use hardcoded state matching for common states
+    query_lower = translated_query.lower()
+    
+    # Handle Odisha/Orissa specifically
+    if 'odisha' in query_lower or 'orissa' in query_lower:
+        target_state = 'ODISHA'
+        print(f"[DEBUG] Matched Odisha/Orissa -> ODISHA")
+    
+    # Handle other common states
+    elif 'karnataka' in query_lower:
+        target_state = 'KARNATAKA'
+    elif 'tamilnadu' in query_lower or 'tamil nadu' in query_lower:
+        target_state = 'TAMILNADU'
+    elif 'maharashtra' in query_lower:
+        target_state = 'MAHARASHTRA'
+    elif 'gujarat' in query_lower:
+        target_state = 'GUJARAT'
+    elif 'rajasthan' in query_lower:
+        target_state = 'RAJASTHAN'
+    elif 'west bengal' in query_lower or 'bengal' in query_lower:
+        target_state = 'WEST BENGAL'
+    elif 'bihar' in query_lower:
+        target_state = 'BIHAR'
+    elif 'telangana' in query_lower:
+        target_state = 'TELANGANA'
+    elif 'andhra pradesh' in query_lower or 'andhra' in query_lower:
+        target_state = 'ANDHRA PRADESH'
+    
+    print(f"[DEBUG] Extracted target_state: {target_state}")
+    
+    # Fallback to CSV-based extraction if not found
+    if not target_state and _master_df is not None:
         unique_states = _master_df['STATE'].unique().tolist()
         unique_districts = _master_df['DISTRICT'].unique().tolist()
         
-        # Try to find state with fuzzy matching
+        # Try to find state with improved matching
         for state in unique_states:
             if pd.notna(state):
+                state_lower = str(state).lower()
                 # Exact match
                 if re.search(r'\b' + re.escape(str(state)) + r'\b', translated_query, re.IGNORECASE):
                     target_state = state
                     break
                 # Partial match
-                elif str(state).lower() in translated_query.lower():
+                elif str(state).lower() in query_lower:
                     target_state = state
                     break
+        
+        print(f"[DEBUG] CSV fallback extracted target_state: {target_state}")
+        print(f"[DEBUG] Available states sample: {unique_states[:10]}")
 
         if target_state:
             districts_in_state = _master_df[_master_df['STATE'] == target_state]['DISTRICT'].unique().tolist()
@@ -1416,23 +1494,31 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     
     candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
     
-    # If no results found with location filters, try without location filters
+    # If no results found with location filters, check if we should use fallback
     if not candidate_results:
-        candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+        # Only use fallback if no specific state was requested
+        if not target_state:
+            candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+            
+            # If still no results, try with just the basic query without expansion
+            if not candidate_results:
+                candidate_results = search_excel_chunks(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+            
+            # If still no results, try with original query (before translation)
+            if not candidate_results:
+                candidate_results = search_excel_chunks(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
-    # If still no results, try with just the basic query without expansion
+    # If still no results, try with common groundwater keywords only if no specific state was requested
     if not candidate_results:
-        candidate_results = search_excel_chunks(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+        if not target_state:
+            groundwater_query = "groundwater estimation data analysis"
+            candidate_results = search_excel_chunks(groundwater_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
-    # If still no results, try with original query (before translation)
-    if not candidate_results:
-        candidate_results = search_excel_chunks(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+    # If no results and a specific state was requested, return a clear message
+    if not candidate_results and target_state:
+        return f"No data available for {target_state}."
     
-    # If still no results, try with common groundwater keywords
-    if not candidate_results:
-        groundwater_query = "groundwater estimation data analysis"
-        candidate_results = search_excel_chunks(groundwater_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
-    
+    # If no results at all, return generic message
     if not candidate_results:
         return "I couldn't find enough relevant information in the groundwater data to answer your question."
     
@@ -2220,7 +2306,7 @@ async def ask_formatted(request: AskRequest):
         
         # Add additional formatting instructions for better structure
         formatted_answer = f"""
-# 💧 Groundwater Data Analysis Report
+#  Groundwater Data Analysis Report
 
 ## Query
 **Question:** {query}
@@ -2467,9 +2553,9 @@ def categorize_groundwater_status(extraction_percentage: float) -> tuple[str, st
     elif extraction_percentage < 90:
         return "Semi-Critical", "🟡"
     elif extraction_percentage < 100:
-        return "Critical", "🔴"
+        return "Critical", ""
     else:
-        return "Over-Exploited", "⚫"
+        return "Over-Exploited", ""
 
 def analyze_water_quality(record) -> Dict[str, Any]:
     """
@@ -2864,11 +2950,11 @@ def generate_comprehensive_groundwater_summary(record) -> Dict[str, Any]:
             safety_description = "Groundwater resources are approaching critical levels"
         elif extraction_stage < 100:
             safety_category = "Critical"
-            safety_emoji = "🔴"
+            safety_emoji = ""
             safety_description = "Groundwater resources are critically stressed"
         else:
             safety_category = "Over-Exploited"
-            safety_emoji = "⚫"
+            safety_emoji = ""
             safety_description = "Groundwater extraction exceeds recharge capacity"
         
         # Calculate recharge source percentages
@@ -2886,21 +2972,21 @@ def generate_comprehensive_groundwater_summary(record) -> Dict[str, Any]:
         
         # Generate key findings as a clear, structured list
         key_findings = [
-            f"🌧️ RAINFALL DEPENDENCY: The region receives {rainfall:.1f} mm of annual rainfall, contributing {rainfall_percentage:.1f}% of total groundwater recharge",
-            f"💧 RECHARGE SOURCES: Total annual recharge of {annual_recharge:.1f} ham comes from rainfall ({rainfall_percentage:.1f}%), surface irrigation ({irrigation_percentage:.1f}%), and other sources ({other_percentage:.1f}%)",
-            f"🌾 AGRICULTURAL DOMINANCE: Agricultural cultivation accounts for {cultivation_percentage:.1f}% of total groundwater extraction ({extraction_cultivation:.1f} ha.m)",
-            f"🏭 EXTRACTION BREAKDOWN: Total extraction of {extraction_total:.1f} ha.m includes cultivation ({cultivation_percentage:.1f}%), non-cultivation ({non_cultivation_percentage:.1f}%), domestic ({domestic_percentage:.1f}%), and industrial ({industrial_percentage:.1f}%) uses",
-            f"⚠️ SAFETY STATUS: {safety_category} {safety_emoji} - {safety_description}",
-            f"📊 EXTRACTION LEVEL: {extraction_stage:.1f}% of available resources extracted, with {future_availability:.1f} ham remaining for future use",
-            f"🔄 SUSTAINABILITY: {'Sustainable' if extraction_stage < 70 else 'At Risk' if extraction_stage < 100 else 'Critical'} status based on extraction vs recharge balance"
+            f"[RAIN] RAINFALL DEPENDENCY: The region receives {rainfall:.1f} mm of annual rainfall, contributing {rainfall_percentage:.1f}% of total groundwater recharge",
+            f" RECHARGE SOURCES: Total annual recharge of {annual_recharge:.1f} ham comes from rainfall ({rainfall_percentage:.1f}%), surface irrigation ({irrigation_percentage:.1f}%), and other sources ({other_percentage:.1f}%)",
+            f" AGRICULTURAL DOMINANCE: Agricultural cultivation accounts for {cultivation_percentage:.1f}% of total groundwater extraction ({extraction_cultivation:.1f} ha.m)",
+            f" EXTRACTION BREAKDOWN: Total extraction of {extraction_total:.1f} ha.m includes cultivation ({cultivation_percentage:.1f}%), non-cultivation ({non_cultivation_percentage:.1f}%), domestic ({domestic_percentage:.1f}%), and industrial ({industrial_percentage:.1f}%) uses",
+            f"[WARNING] SAFETY STATUS: {safety_category} {safety_emoji} - {safety_description}",
+            f" EXTRACTION LEVEL: {extraction_stage:.1f}% of available resources extracted, with {future_availability:.1f} ham remaining for future use",
+            f"[INIT] SUSTAINABILITY: {'Sustainable' if extraction_stage < 70 else 'At Risk' if extraction_stage < 100 else 'Critical'} status based on extraction vs recharge balance"
         ]
         
         # Add Karnataka comprehensive averages if this is Karnataka data
         if state.lower() in ['karnataka', 'karnataka state']:
             key_findings.extend([
-                f"📊 KARNATAKA AVERAGES: Based on Davanagere & Mysuru districts - 61,021.61 ham annual recharge, 85.01% extraction stage",
-                f"🌍 GEOGRAPHICAL COVERAGE: 449,970.60 ha recharge-worthy area with 746.09 mm average rainfall",
-                f"⚠️ DATA LIMITATIONS: Analysis limited to 2 districts, not representative of entire Karnataka state"
+                f" KARNATAKA AVERAGES: Based on Davanagere & Mysuru districts - 61,021.61 ham annual recharge, 85.01% extraction stage",
+                f" GEOGRAPHICAL COVERAGE: 449,970.60 ha recharge-worthy area with 746.09 mm average rainfall",
+                f"[WARNING] DATA LIMITATIONS: Analysis limited to 2 districts, not representative of entire Karnataka state"
             ])
         
         # Generate comprehensive summary
@@ -2949,11 +3035,11 @@ def generate_comprehensive_groundwater_summary(record) -> Dict[str, Any]:
                 "sustainability_status": "Sustainable" if extraction_stage < 70 else "At Risk" if extraction_stage < 100 else "Critical"
             },
             "summary_bullets": [
-                f"📍 Location: {district}, {state} (Assessment Year: {assessment_year})",
-                f"💧 Groundwater Availability: Primarily dependent on rainfall ({rainfall:.1f} mm) contributing {rainfall_percentage:.1f}% of total recharge",
-                f"🌾 Major Use: Agricultural cultivation accounts for {cultivation_percentage:.1f}% of total groundwater extraction",
-                f"⚠️ Safety Status: {safety_category} {safety_emoji} - {safety_description}",
-                f"📊 Extraction Level: {extraction_stage:.1f}% of available resources, with {future_availability:.1f} ham remaining for future use"
+                f" Location: {district}, {state} (Assessment Year: {assessment_year})",
+                f" Groundwater Availability: Primarily dependent on rainfall ({rainfall:.1f} mm) contributing {rainfall_percentage:.1f}% of total recharge",
+                f" Major Use: Agricultural cultivation accounts for {cultivation_percentage:.1f}% of total groundwater extraction",
+                f"[WARNING] Safety Status: {safety_category} {safety_emoji} - {safety_description}",
+                f" Extraction Level: {extraction_stage:.1f}% of available resources, with {future_availability:.1f} ham remaining for future use"
             ],
             "detailed_analysis": {
                 "recharge_analysis": f"Total annual recharge of {annual_recharge:.1f} ham comes primarily from rainfall ({rainfall_percentage:.1f}%), with additional contributions from surface irrigation ({irrigation_percentage:.1f}%) and other sources ({other_percentage:.1f}%)",
@@ -3149,13 +3235,13 @@ def generate_enhanced_statistics() -> Dict[str, Any]:
                     "count": int(critical_count),
                     "percentage": round(critical_count / len(extraction_data) * 100, 1),
                     "states": int(critical_count),
-                    "emoji": "🔴"
+                    "emoji": ""
                 },
                 "over_exploited": {
                     "count": int(over_exploited_count),
                     "percentage": round(over_exploited_count / len(extraction_data) * 100, 1),
                     "states": int(over_exploited_count),
-                    "emoji": "⚫"
+                    "emoji": ""
                 }
             },
             "visualization_coverage": {
@@ -3179,8 +3265,8 @@ def generate_enhanced_statistics() -> Dict[str, Any]:
             "criticality_distribution": {
                 "safe": {"count": 0, "percentage": 0, "states": 0, "emoji": "🟢"},
                 "semi_critical": {"count": 0, "percentage": 0, "states": 0, "emoji": "🟡"},
-                "critical": {"count": 0, "percentage": 0, "states": 0, "emoji": "🔴"},
-                "over_exploited": {"count": 0, "percentage": 0, "states": 0, "emoji": "⚫"}
+                "critical": {"count": 0, "percentage": 0, "states": 0, "emoji": ""},
+                "over_exploited": {"count": 0, "percentage": 0, "states": 0, "emoji": ""}
             },
             "visualization_coverage": {
                 "total_states": 0,
@@ -3261,7 +3347,7 @@ def create_groundwater_visualizations(data: Dict[str, Any]) -> List[Dict[str, An
     try:
         # 1. Criticality Status Pie Chart
         status = data.get('criticality_status', 'Unknown')
-        emoji = data.get('criticality_emoji', '❓')
+        emoji = data.get('criticality_emoji', '')
         
         fig_pie = go.Figure(data=[go.Pie(
             labels=[f"{emoji} {status}"],
@@ -3541,7 +3627,7 @@ def get_state_from_coordinates(lat: float, lng: float) -> str:
                     
                     # If Gemini agrees with boundary mapping, use it
                     if detected_state.lower() in line.lower() or line.lower() in detected_state.lower():
-                        print(f"✅ Gemini confirms: {detected_state}")
+                        print(f"[OK] Gemini confirms: {detected_state}")
                         return detected_state
                     else:
                         # If Gemini disagrees, check if Gemini's suggestion is valid
@@ -3550,15 +3636,15 @@ def get_state_from_coordinates(lat: float, lng: float) -> str:
                             if (state.lower() in line.lower() or line.lower() in state.lower()) and \
                                (bounds["min_lat"] <= lat <= bounds["max_lat"] and 
                                 bounds["min_lng"] <= lng <= bounds["max_lng"]):
-                                print(f"✅ Gemini correction: {state} for coordinates ({lat}, {lng})")
+                                print(f"[OK] Gemini correction: {state} for coordinates ({lat}, {lng})")
                                 return state
                         
                         # If Gemini's suggestion is not valid, stick with boundary mapping
-                        print(f"⚠️ Gemini suggestion '{line}' not valid for coordinates, using boundary mapping: {detected_state}")
+                        print(f"[WARNING] Gemini suggestion '{line}' not valid for coordinates, using boundary mapping: {detected_state}")
                         return detected_state
             
             # If Gemini response is unclear, use boundary mapping
-            print(f"⚠️ Gemini response unclear, using boundary mapping: {detected_state}")
+            print(f"[WARNING] Gemini response unclear, using boundary mapping: {detected_state}")
             return detected_state
             
         except Exception as e:
@@ -3967,23 +4053,23 @@ async def startup_event():
     """Initialize components on startup."""
     global _embeddings_uploaded
     try:
-        print("🔄 Starting application initialization...")
+        print("[INIT] Starting application initialization...")
         
         # Run the synchronous initialization in a thread pool to avoid blocking
         import asyncio
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, _init_components)
-        print("✅ Core components initialized")
+        print("[OK] Core components initialized")
         
         # Initialize collection with timeout
         try:
             collection_setup = await loop.run_in_executor(None, setup_collection)
             if collection_setup:
-                print("✅ Qdrant collection ready")
+                print("[OK] Qdrant collection ready")
             else:
-                print("⚠️ Qdrant collection setup failed, continuing with limited functionality")
+                print("[WARNING] Qdrant collection setup failed, continuing with limited functionality")
         except Exception as e:
-            print(f"⚠️ Qdrant collection error: {e}, continuing with limited functionality")
+            print(f"[WARNING] Qdrant collection error: {e}, continuing with limited functionality")
             collection_setup = False
         
         # Initialize BM25 and embeddings
@@ -3992,7 +4078,7 @@ async def startup_event():
                 if check_excel_embeddings_exist():
                     await loop.run_in_executor(None, _load_bm25)
                     _embeddings_uploaded = True
-                    print("✅ Excel data embeddings loaded and BM25 initialized.")
+                    print("[OK] Excel data embeddings loaded and BM25 initialized.")
                 else:
                     if _master_df is not None:
                         print("⏳ Uploading Excel data to Qdrant...")
@@ -4000,22 +4086,22 @@ async def startup_event():
                         if upload_success:
                             await loop.run_in_executor(None, _load_bm25)
                             _embeddings_uploaded = True
-                            print("✅ Excel data processed and indexed.")
+                            print("[OK] Excel data processed and indexed.")
                         else:
-                            print("❌ Failed to upload Excel data embeddings to Qdrant.")
+                            print("[ERROR] Failed to upload Excel data embeddings to Qdrant.")
             except Exception as e:
-                print(f"⚠️ Embedding initialization error: {e}")
+                print(f"[WARNING] Embedding initialization error: {e}")
         elif _bm25_model is None:
             try:
-                print("📚 Embeddings previously uploaded. Initializing BM25 from existing data...")
+                print(" Embeddings previously uploaded. Initializing BM25 from existing data...")
                 await loop.run_in_executor(None, _load_bm25)
-                print("✅ BM25 initialized from existing data")
+                print("[OK] BM25 initialized from existing data")
             except Exception as e:
-                print(f"⚠️ BM25 initialization error: {e}")
+                print(f"[WARNING] BM25 initialization error: {e}")
         
-        print("🚀 Groundwater RAG API started successfully!")
+        print(" Groundwater RAG API started successfully!")
     except Exception as e:
-        print(f"❌ Startup error: {e}")
-        print("⚠️ Continuing with limited functionality...")
+        print(f"[ERROR] Startup error: {e}")
+        print("[WARNING] Continuing with limited functionality...")
 
 # Run with: uvicorn main:app --reload --port 8000
