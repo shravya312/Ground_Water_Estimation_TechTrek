@@ -36,6 +36,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.figure_factory as ff
+import plotly.io as pio
+import base64
+import io
+from typing import Dict, List, Any, Optional
 # Lazy imports for translators to avoid hard dependency issues at import time
 try:
     from googletrans import Translator as GoogleTransTranslator
@@ -54,13 +58,13 @@ QDRANT_API_KEY = os.getenv("QDRANT_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 COLLECTION_NAME = "ingris_groundwater_collection"
 VECTOR_SIZE = 768  # Upgraded to support better embedding models
-MIN_SIMILARITY_SCORE = 0.1  # Lowered threshold to find more relevant results
+MIN_SIMILARITY_SCORE = 0.4  # Balanced threshold for dense search (can be adjusted to 0.7 gradually)
 
 # --- Advanced RAG Configuration ---
 HYBRID_ALPHA = 0.6  # Weight for dense vs sparse retrieval (0.6 = 60% dense, 40% sparse)
-RERANK_TOP_K = 10  # Number of chunks to re-rank
-QUERY_EXPANSION_TERMS = 3  # Number of terms to add via query expansion
-RERANK_MIN_SIMILARITY = 0.1  # Minimum similarity for reranking (start low, improve gradually)
+QUERY_EXPANSION_TERMS = 5  # Number of terms to add via query expansion (increased for better coverage)
+RERANK_MIN_SIMILARITY = 0.3  # Minimum similarity for reranking (increased from 0.1)
+DIVERSIFICATION_THRESHOLD = 0.8  # Maximum similarity between diversified results
 
 # --- Language Support ---
 SUPPORTED_LANGUAGES = {
@@ -1301,6 +1305,103 @@ def expand_query(query, num_terms=3):
 
 # ===== ADVANCED RAG FUNCTIONS =====
 
+def calculate_semantic_boost(query_text, chunk_text):
+    """Calculate semantic boost for groundwater-specific terms."""
+    if not query_text or not chunk_text:
+        return 0.0
+    
+    # Groundwater-specific terms that should get higher scores
+    groundwater_terms = {
+        'groundwater': 0.3,
+        'aquifer': 0.25,
+        'recharge': 0.2,
+        'extraction': 0.2,
+        'sustainability': 0.15,
+        'over-exploited': 0.2,
+        'critical': 0.15,
+        'safe': 0.1,
+        'rainfall': 0.15,
+        'assessment': 0.1,
+        'ham': 0.1,
+        'mm': 0.05,
+        'percentage': 0.05,
+        'watershed': 0.1,
+        'taluk': 0.1,
+        'district': 0.05,
+        'state': 0.05
+    }
+    
+    query_lower = query_text.lower()
+    chunk_lower = chunk_text.lower()
+    
+    boost = 0.0
+    for term, boost_value in groundwater_terms.items():
+        if term in query_lower and term in chunk_lower:
+            boost += boost_value
+    
+    # Additional boost for exact phrase matches
+    query_words = set(query_lower.split())
+    chunk_words = set(chunk_lower.split())
+    common_words = query_words.intersection(chunk_words)
+    
+    if len(common_words) > 0:
+        boost += min(0.2, len(common_words) * 0.05)
+    
+    return min(boost, 0.5)  # Cap at 50% boost
+
+def diversify_results(scored_results, query_text, max_similarity=0.8):
+    """Diversify results to avoid similar chunks."""
+    if not scored_results or len(scored_results) <= 1:
+        return [result for result, score in scored_results]
+    
+    try:
+        diversified = []
+        used_chunks = set()
+        
+        for result, score in scored_results:
+            chunk_text = result['data'].get('combined_text', '')
+            if not chunk_text:
+                continue
+            
+            # Check similarity with already selected chunks
+            is_similar = False
+            for used_chunk in used_chunks:
+                if calculate_text_similarity(chunk_text, used_chunk) > max_similarity:
+                    is_similar = True
+                    break
+            
+            if not is_similar:
+                diversified.append(result)
+                used_chunks.add(chunk_text)
+                
+                # Limit to reasonable number of diverse results
+                if len(diversified) >= 20:
+                    break
+        
+        print(f"🔄 Diversification: {len(diversified)} diverse results from {len(scored_results)} candidates")
+        return diversified
+        
+    except Exception as e:
+        print(f"⚠️ Diversification failed: {e}")
+        return [result for result, score in scored_results]
+
+def calculate_text_similarity(text1, text2):
+    """Calculate similarity between two text chunks."""
+    if not text1 or not text2:
+        return 0.0
+    
+    # Simple Jaccard similarity
+    words1 = set(text1.lower().split())
+    words2 = set(text2.lower().split())
+    
+    if not words1 or not words2:
+        return 0.0
+    
+    intersection = len(words1.intersection(words2))
+    union = len(words1.union(words2))
+    
+    return intersection / union if union > 0 else 0.0
+
 def tokenize_text_for_bm25(text):
     """Tokenize text for BM25 processing."""
     if not text:
@@ -1363,6 +1464,9 @@ def hybrid_search(query_text, year=None, target_state=None, target_district=None
         print("📊 Performing dense retrieval...")
         dense_results = []
         
+        # Calculate adaptive dense search threshold
+        dense_threshold = calculate_dense_search_threshold(query_text)
+        
         # Try Qdrant first
         if _qdrant_client:
             try:
@@ -1371,10 +1475,15 @@ def hybrid_search(query_text, year=None, target_state=None, target_district=None
                     collection_name=COLLECTION_NAME,
                     query_vector=query_vector,
                     limit=50,  # Get more candidates for hybrid scoring
-                    score_threshold=RERANK_MIN_SIMILARITY
+                    score_threshold=0.0  # Low threshold to get candidates
                 )
-                dense_results = [{"score": hit.score, "data": hit.payload} for hit in qdrant_results]
-                print(f"✅ Dense retrieval: {len(dense_results)} results from Qdrant")
+                # Apply adaptive threshold filtering
+                dense_results = [
+                    {"score": hit.score, "data": hit.payload} 
+                    for hit in qdrant_results 
+                    if hit.score >= dense_threshold
+                ]
+                print(f"✅ Dense retrieval: {len(dense_results)} results from Qdrant (threshold: {dense_threshold:.3f})")
             except Exception as e:
                 print(f"⚠️ Qdrant dense search failed: {e}")
         
@@ -1390,9 +1499,9 @@ def hybrid_search(query_text, year=None, target_state=None, target_district=None
                     dense_results = []
                     for i, (metadata, distance) in enumerate(zip(chromadb_results['metadatas'][0], chromadb_results['distances'][0])):
                         score = 1 - distance  # Convert distance to similarity
-                        if score >= RERANK_MIN_SIMILARITY:
+                        if score >= dense_threshold:  # Use adaptive threshold
                             dense_results.append({"score": score, "data": metadata})
-                    print(f"✅ Dense retrieval: {len(dense_results)} results from ChromaDB")
+                    print(f"✅ Dense retrieval: {len(dense_results)} results from ChromaDB (threshold: {dense_threshold:.3f})")
             except Exception as e:
                 print(f"⚠️ ChromaDB dense search failed: {e}")
         
@@ -1418,29 +1527,47 @@ def hybrid_search(query_text, year=None, target_state=None, target_district=None
             except Exception as e:
                 print(f"⚠️ BM25 sparse search failed: {e}")
         
-        # --- Hybrid Scoring ---
-        print("🔄 Performing hybrid scoring...")
+        # --- Enhanced Hybrid Scoring ---
+        print("🔄 Performing enhanced hybrid scoring...")
         combined_scores = {}
         alpha = HYBRID_ALPHA  # Weight for dense vs sparse
         
-        # Normalize scores
-        max_dense_score = max([r['score'] for r in dense_results]) if dense_results else 1.0
-        max_sparse_score = max([r['score'] for r in sparse_results]) if sparse_results else 1.0
+        # Advanced normalization with robust statistics
+        dense_scores = [r['score'] for r in dense_results] if dense_results else []
+        sparse_scores = [r['score'] for r in sparse_results] if sparse_results else []
         
-        # Combine dense results
+        # Use robust normalization (avoid division by very small numbers)
+        max_dense_score = max(dense_scores) if dense_scores else 1.0
+        max_sparse_score = max(sparse_scores) if sparse_scores else 1.0
+        
+        # Add minimum threshold to avoid division by very small numbers
+        max_dense_score = max(max_dense_score, 0.01)
+        max_sparse_score = max(max_sparse_score, 0.01)
+        
+        # Combine dense results with enhanced scoring
         for result in dense_results:
             chunk_key = result['data'].get('combined_text', str(result['data']))
-            normalized_score = result['score'] / max_dense_score if max_dense_score > 0 else 0
-            combined_scores[chunk_key] = alpha * normalized_score
+            normalized_score = result['score'] / max_dense_score
+            
+            # Apply semantic boosting for groundwater-specific terms
+            semantic_boost = calculate_semantic_boost(query_text, chunk_key)
+            enhanced_score = normalized_score * (1 + semantic_boost)
+            
+            combined_scores[chunk_key] = alpha * enhanced_score
         
-        # Combine sparse results
+        # Combine sparse results with enhanced scoring
         for result in sparse_results:
             chunk_key = result['data'].get('combined_text', str(result['data']))
-            normalized_score = result['score'] / max_sparse_score if max_sparse_score > 0 else 0
+            normalized_score = result['score'] / max_sparse_score
+            
+            # Apply semantic boosting for groundwater-specific terms
+            semantic_boost = calculate_semantic_boost(query_text, chunk_key)
+            enhanced_score = normalized_score * (1 + semantic_boost)
+            
             if chunk_key in combined_scores:
-                combined_scores[chunk_key] += (1 - alpha) * normalized_score
+                combined_scores[chunk_key] += (1 - alpha) * enhanced_score
             else:
-                combined_scores[chunk_key] = (1 - alpha) * normalized_score
+                combined_scores[chunk_key] = (1 - alpha) * enhanced_score
         
         # Sort by combined score
         sorted_results = sorted(combined_scores.items(), key=lambda x: x[1], reverse=True)
@@ -1462,13 +1589,17 @@ def hybrid_search(query_text, year=None, target_state=None, target_district=None
         # Fallback to regular search
         return search_excel_chunks(query_text, year, target_state, target_district, extracted_parameters)
 
-def advanced_rerank(query_text, candidate_results, top_k=5):
-    """Advanced reranking using semantic similarity and additional factors."""
+def advanced_rerank(query_text, candidate_results):
+    """Advanced reranking using semantic similarity - returns ALL chunks above minimum threshold."""
+    return advanced_rerank_with_threshold(query_text, candidate_results, RERANK_MIN_SIMILARITY)
+
+def advanced_rerank_with_threshold(query_text, candidate_results, threshold):
+    """Advanced reranking with custom threshold - returns ALL chunks above threshold."""
     if not candidate_results or not _model:
-        return candidate_results[:top_k] if candidate_results else []
+        return candidate_results if candidate_results else []
     
     try:
-        print(f"🔄 Advanced reranking {len(candidate_results)} candidates...")
+        print(f"🔄 Advanced reranking {len(candidate_results)} candidates with threshold {threshold:.3f}...")
         
         # Extract text from candidates
         candidate_texts = []
@@ -1485,7 +1616,7 @@ def advanced_rerank(query_text, candidate_results, top_k=5):
             candidate_texts.append(text)
         
         if not candidate_texts:
-            return candidate_results[:top_k]
+            return candidate_results
         
         # Encode query and candidates
         query_embedding = _model.encode([query_text])[0]
@@ -1496,69 +1627,100 @@ def advanced_rerank(query_text, candidate_results, top_k=5):
         candidate_norms = np.linalg.norm(candidate_embeddings, axis=1)
         
         if query_norm == 0:
-            return candidate_results[:top_k]
+            return candidate_results
         
         # Avoid division by zero
         candidate_norms[candidate_norms == 0] = 1e-12
         
         similarities = np.dot(candidate_embeddings, query_embedding) / (candidate_norms * query_norm)
         
-        # Apply minimum similarity threshold
-        valid_indices = similarities >= RERANK_MIN_SIMILARITY
+        # Apply custom similarity threshold - return ALL chunks above threshold
+        valid_indices = similarities >= threshold
         
         if not np.any(valid_indices):
-            print(f"⚠️ No candidates meet minimum similarity threshold ({RERANK_MIN_SIMILARITY})")
-            return candidate_results[:top_k]
+            print(f"⚠️ No candidates meet similarity threshold ({threshold:.3f})")
+            return []
         
-        # Create scored results
+        # Create scored results for ALL qualifying chunks
         scored_results = []
         for i, (result, similarity) in enumerate(zip(candidate_results, similarities)):
             if valid_indices[i]:
-                # Combine original score with semantic similarity
-                combined_score = 0.7 * similarity + 0.3 * result.get('score', 0)
-                scored_results.append((result, combined_score))
+                # Enhanced scoring with semantic boost
+                semantic_boost = calculate_semantic_boost(query_text, candidate_texts[i])
+                base_score = 0.7 * similarity + 0.3 * result.get('score', 0)
+                enhanced_score = base_score * (1 + semantic_boost)
+                scored_results.append((result, enhanced_score))
         
-        # Sort by combined score
+        # Sort by enhanced score (highest first)
         scored_results.sort(key=lambda x: x[1], reverse=True)
         
-        # Return top_k results
-        reranked_results = [result for result, score in scored_results[:top_k]]
+        # Apply result diversification to avoid similar chunks
+        diversified_results = diversify_results(scored_results, query_text)
         
-        print(f"✅ Advanced reranking completed: {len(reranked_results)} results")
-        return reranked_results
+        print(f"✅ Advanced reranking completed: {len(diversified_results)} results above threshold {threshold:.3f}")
+        return diversified_results
         
     except Exception as e:
         print(f"❌ Advanced reranking failed: {e}")
-        return candidate_results[:top_k]
+        return candidate_results
 
 def enhanced_query_expansion(query, num_terms=3):
-    """Enhanced query expansion with domain-specific terms."""
+    """Enhanced query expansion with advanced domain-specific techniques."""
     if not _gemini_model:
         return query
     
     try:
-        # Domain-specific prompt for groundwater data
-        prompt = f"""
-        You are a groundwater expert. Expand the following query with {num_terms} related technical terms, synonyms, or alternative phrasings that would help find relevant groundwater data.
+        # Multi-stage query expansion for better coverage
+        expanded_terms = []
         
-        Focus on terms related to:
-        - Groundwater extraction, recharge, availability
-        - Administrative divisions (states, districts, taluks)
-        - Water quality, sustainability, over-exploitation
-        - Rainfall, geographical areas, environmental flows
-        - Technical parameters and measurements
+        # Stage 1: Technical term expansion
+        technical_prompt = f"""
+        As a groundwater hydrologist, expand this query with {num_terms//2 + 1} technical terms:
         
-        Query: {query}
+        Query: "{query}"
         
-        Output only the terms, separated by commas, no other text.
-        Related terms:"""
+        Focus on:
+        - Scientific terminology (aquifer, recharge, extraction, sustainability)
+        - Measurement units (ham, mm, percentage, cubic meters)
+        - Assessment categories (safe, semi-critical, critical, over-exploited)
+        - Administrative terms (assessment unit, watershed, taluk, block)
         
-        response = _gemini_model.generate_content(prompt)
-        expanded_terms = [term.strip() for term in response.text.strip().split(',') if term.strip()]
+        Output only terms, comma-separated:"""
+        
+        try:
+            response = _gemini_model.generate_content(technical_prompt)
+            technical_terms = [term.strip() for term in response.text.strip().split(',') if term.strip()]
+            expanded_terms.extend(technical_terms[:num_terms//2 + 1])
+        except Exception as e:
+            print(f"⚠️ Technical expansion failed: {e}")
+        
+        # Stage 2: Synonym and alternative phrasings
+        synonym_prompt = f"""
+        Provide {num_terms//2 + 1} synonyms and alternative phrasings for groundwater-related terms in this query:
+        
+        Query: "{query}"
+        
+        Include:
+        - Alternative ways to express the same concept
+        - Regional variations in terminology
+        - Formal and informal terms
+        - Related concepts that might appear in data
+        
+        Output only terms, comma-separated:"""
+        
+        try:
+            response = _gemini_model.generate_content(synonym_prompt)
+            synonym_terms = [term.strip() for term in response.text.strip().split(',') if term.strip()]
+            expanded_terms.extend(synonym_terms[:num_terms//2 + 1])
+        except Exception as e:
+            print(f"⚠️ Synonym expansion failed: {e}")
+        
+        # Remove duplicates and limit to requested number
+        expanded_terms = list(dict.fromkeys(expanded_terms))[:num_terms]
         
         if expanded_terms:
             expanded_query = f"{query} {' '.join(expanded_terms)}"
-            print(f"✅ Query expanded: {expanded_query}")
+            print(f"✅ Query expanded with {len(expanded_terms)} terms: {expanded_query}")
             return expanded_query
         else:
             return query
@@ -1567,10 +1729,89 @@ def enhanced_query_expansion(query, num_terms=3):
         print(f"⚠️ Query expansion failed: {e}")
         return query
 
+def calculate_adaptive_threshold(query_text, base_threshold=RERANK_MIN_SIMILARITY):
+    """Calculate adaptive threshold based on query complexity and specificity."""
+    if not query_text:
+        return base_threshold
+    
+    # Analyze query complexity
+    query_words = query_text.lower().split()
+    query_length = len(query_words)
+    
+    # Groundwater-specific terms that indicate high specificity
+    specific_terms = {
+        'groundwater', 'aquifer', 'recharge', 'extraction', 'sustainability',
+        'over-exploited', 'critical', 'safe', 'rainfall', 'assessment',
+        'ham', 'percentage', 'watershed', 'taluk', 'district', 'state'
+    }
+    
+    # Count specific terms in query
+    specific_count = sum(1 for word in query_words if word in specific_terms)
+    
+    # Calculate adaptive threshold
+    if query_length <= 3:
+        # Short queries - lower threshold for broader results
+        adaptive_threshold = max(0.1, base_threshold - 0.1)
+    elif specific_count >= 3:
+        # High specificity - can use higher threshold
+        adaptive_threshold = min(0.7, base_threshold + 0.2)
+    elif specific_count >= 1:
+        # Medium specificity - moderate threshold
+        adaptive_threshold = base_threshold
+    else:
+        # Low specificity - lower threshold
+        adaptive_threshold = max(0.1, base_threshold - 0.05)
+    
+    print(f"📊 Adaptive threshold: {adaptive_threshold:.3f} (base: {base_threshold:.3f}, specificity: {specific_count}/{query_length})")
+    return adaptive_threshold
+
+def calculate_dense_search_threshold(query_text, base_threshold=MIN_SIMILARITY_SCORE):
+    """Calculate adaptive dense search threshold based on query characteristics."""
+    if not query_text:
+        return base_threshold
+    
+    # Analyze query for dense search optimization
+    query_lower = query_text.lower()
+    query_words = query_lower.split()
+    
+    # High-precision indicators
+    precision_indicators = {
+        'exact', 'specific', 'precise', 'detailed', 'comprehensive',
+        'analysis', 'report', 'data', 'statistics', 'measurement'
+    }
+    
+    # Technical groundwater terms that should get high precision
+    technical_terms = {
+        'groundwater', 'aquifer', 'recharge', 'extraction', 'sustainability',
+        'over-exploited', 'critical', 'safe', 'rainfall', 'assessment',
+        'ham', 'percentage', 'watershed', 'taluk', 'district', 'state'
+    }
+    
+    # Count precision indicators and technical terms
+    precision_count = sum(1 for word in query_words if word in precision_indicators)
+    technical_count = sum(1 for word in query_words if word in technical_terms)
+    
+    # Calculate dense search threshold
+    if precision_count >= 2 or technical_count >= 4:
+        # High precision query - use higher threshold
+        dense_threshold = min(0.7, base_threshold + 0.2)
+    elif technical_count >= 2:
+        # Medium precision query - moderate threshold
+        dense_threshold = base_threshold
+    else:
+        # General query - lower threshold for broader results
+        dense_threshold = max(0.2, base_threshold - 0.1)
+    
+    print(f"🔍 Dense search threshold: {dense_threshold:.3f} (base: {base_threshold:.3f}, precision: {precision_count}, technical: {technical_count})")
+    return dense_threshold
+
 def advanced_search_with_rag(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
     """Complete advanced RAG pipeline with query expansion, hybrid search, and reranking."""
     try:
         print(f"🚀 Starting advanced RAG pipeline for: {query_text}")
+        
+        # Step 0: Calculate adaptive threshold
+        adaptive_threshold = calculate_adaptive_threshold(query_text)
         
         # Step 1: Query Expansion
         print("📝 Step 1: Query expansion...")
@@ -1584,11 +1825,16 @@ def advanced_search_with_rag(query_text, year=None, target_state=None, target_di
             print("⚠️ No results from hybrid search, trying fallback...")
             candidate_results = search_excel_chunks(query_text, year, target_state, target_district, extracted_parameters)
         
-        # Step 3: Advanced Reranking
-        print("🔄 Step 3: Advanced reranking...")
-        final_results = advanced_rerank(query_text, candidate_results, RERANK_TOP_K)
+        # Step 3: Advanced Reranking with adaptive threshold
+        print("🔄 Step 3: Advanced reranking with adaptive threshold...")
+        final_results = advanced_rerank_with_threshold(query_text, candidate_results, adaptive_threshold)
         
-        print(f"✅ Advanced RAG pipeline completed: {len(final_results)} final results")
+        # If no results with adaptive threshold, try with lower threshold
+        if not final_results and adaptive_threshold > 0.1:
+            print("⚠️ No results with adaptive threshold, trying lower threshold...")
+            final_results = advanced_rerank_with_threshold(query_text, candidate_results, 0.1)
+        
+        print(f"✅ Advanced RAG pipeline completed: {len(final_results)} final results above threshold")
         return final_results
         
     except Exception as e:
@@ -4785,36 +5031,77 @@ async def get_rag_config():
     """Get current RAG configuration parameters."""
     return {
         "hybrid_alpha": HYBRID_ALPHA,
-        "rerank_top_k": RERANK_TOP_K,
         "query_expansion_terms": QUERY_EXPANSION_TERMS,
         "rerank_min_similarity": RERANK_MIN_SIMILARITY,
-        "min_similarity_score": MIN_SIMILARITY_SCORE
+        "min_similarity_score": MIN_SIMILARITY_SCORE,
+        "diversification_threshold": DIVERSIFICATION_THRESHOLD
+    }
+
+@app.post("/rag/test-thresholds")
+async def test_progressive_thresholds(request: dict):
+    """Test progressive thresholds from 0.1 to 0.7 for a given query."""
+    query = request.get("query", "")
+    if not query:
+        return {"error": "Query is required"}
+    
+    thresholds = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]
+    results = {}
+    
+    for threshold in thresholds:
+        try:
+            # Use the advanced search with custom threshold
+            candidate_results = hybrid_search(query, None, None, None, None)
+            if candidate_results:
+                final_results = advanced_rerank_with_threshold(query, candidate_results, threshold)
+                results[f"threshold_{threshold}"] = {
+                    "threshold": threshold,
+                    "result_count": len(final_results),
+                    "success": len(final_results) > 0
+                }
+            else:
+                results[f"threshold_{threshold}"] = {
+                    "threshold": threshold,
+                    "result_count": 0,
+                    "success": False
+                }
+        except Exception as e:
+            results[f"threshold_{threshold}"] = {
+                "threshold": threshold,
+                "result_count": 0,
+                "success": False,
+                "error": str(e)
+            }
+    
+    return {
+        "query": query,
+        "threshold_results": results,
+        "recommended_threshold": max([t for t in thresholds if results[f"threshold_{t}"]["success"]], default=0.1)
     }
 
 @app.post("/rag/config")
 async def update_rag_config(config: dict):
     """Update RAG configuration parameters."""
-    global HYBRID_ALPHA, RERANK_TOP_K, QUERY_EXPANSION_TERMS, RERANK_MIN_SIMILARITY, MIN_SIMILARITY_SCORE
+    global HYBRID_ALPHA, QUERY_EXPANSION_TERMS, RERANK_MIN_SIMILARITY, MIN_SIMILARITY_SCORE, DIVERSIFICATION_THRESHOLD
     
     if "hybrid_alpha" in config:
         HYBRID_ALPHA = max(0.0, min(1.0, config["hybrid_alpha"]))
-    if "rerank_top_k" in config:
-        RERANK_TOP_K = max(1, min(50, config["rerank_top_k"]))
     if "query_expansion_terms" in config:
         QUERY_EXPANSION_TERMS = max(0, min(10, config["query_expansion_terms"]))
     if "rerank_min_similarity" in config:
         RERANK_MIN_SIMILARITY = max(0.0, min(1.0, config["rerank_min_similarity"]))
     if "min_similarity_score" in config:
         MIN_SIMILARITY_SCORE = max(0.0, min(1.0, config["min_similarity_score"]))
+    if "diversification_threshold" in config:
+        DIVERSIFICATION_THRESHOLD = max(0.0, min(1.0, config["diversification_threshold"]))
     
     return {
         "message": "RAG configuration updated successfully",
         "new_config": {
             "hybrid_alpha": HYBRID_ALPHA,
-            "rerank_top_k": RERANK_TOP_K,
             "query_expansion_terms": QUERY_EXPANSION_TERMS,
             "rerank_min_similarity": RERANK_MIN_SIMILARITY,
-            "min_similarity_score": MIN_SIMILARITY_SCORE
+            "min_similarity_score": MIN_SIMILARITY_SCORE,
+            "diversification_threshold": DIVERSIFICATION_THRESHOLD
         }
     }
 

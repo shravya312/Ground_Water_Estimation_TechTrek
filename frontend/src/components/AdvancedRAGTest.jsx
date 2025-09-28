@@ -7,10 +7,10 @@ const AdvancedRAGTest = () => {
   const [loading, setLoading] = useState(false);
   const [config, setConfig] = useState({
     hybrid_alpha: 0.6,
-    rerank_top_k: 10,
-    query_expansion_terms: 3,
-    rerank_min_similarity: 0.1,
-    min_similarity_score: 0.1
+    query_expansion_terms: 5,
+    rerank_min_similarity: 0.3,
+    min_similarity_score: 0.4,
+    diversification_threshold: 0.8
   });
   const [showConfig, setShowConfig] = useState(false);
 
@@ -113,16 +113,6 @@ const AdvancedRAGTest = () => {
               <span>{config.hybrid_alpha}</span>
             </div>
 
-            <div className="config-group">
-              <label>Rerank Top K:</label>
-              <input
-                type="number"
-                min="1"
-                max="50"
-                value={config.rerank_top_k}
-                onChange={(e) => setConfig({...config, rerank_top_k: parseInt(e.target.value)})}
-              />
-            </div>
 
             <div className="config-group">
               <label>Query Expansion Terms:</label>
@@ -159,6 +149,19 @@ const AdvancedRAGTest = () => {
                 onChange={(e) => setConfig({...config, min_similarity_score: parseFloat(e.target.value)})}
               />
               <span>{config.min_similarity_score}</span>
+            </div>
+
+            <div className="config-group">
+              <label>Diversification Threshold:</label>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={config.diversification_threshold}
+                onChange={(e) => setConfig({...config, diversification_threshold: parseFloat(e.target.value)})}
+              />
+              <span>{config.diversification_threshold}</span>
             </div>
 
             <div className="config-actions">

@@ -18,6 +18,7 @@ I've successfully added advanced RAG (Retrieval-Augmented Generation) capabiliti
 - **Semantic Similarity**: Cosine similarity calculation between query and results
 - **Minimum Thresholds**: Configurable similarity thresholds for filtering
 - **Combined Scoring**: 70% semantic similarity + 30% original score
+- **Returns ALL Chunks**: No top-k limit, returns all chunks above minimum threshold
 - **Progressive Improvement**: Start with low thresholds (0.1) and improve gradually
 
 ## 📁 Files Created/Modified
@@ -43,10 +44,9 @@ I've successfully added advanced RAG (Retrieval-Augmented Generation) capabiliti
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
 | `HYBRID_ALPHA` | 0.6 | 0.0-1.0 | Weight for dense vs sparse retrieval |
-| `RERANK_TOP_K` | 10 | 1-50 | Number of results to rerank |
-| `QUERY_EXPANSION_TERMS` | 3 | 0-10 | Number of terms to add via expansion |
-| `RERANK_MIN_SIMILARITY` | 0.1 | 0.0-1.0 | Minimum similarity for reranking |
-| `MIN_SIMILARITY_SCORE` | 0.1 | 0.0-1.0 | Minimum similarity for dense search |
+| `QUERY_EXPANSION_TERMS` | 5 | 0-10 | Number of terms to add via expansion |
+| `RERANK_MIN_SIMILARITY` | 0.3 | 0.0-1.0 | Minimum similarity for reranking (returns ALL chunks above threshold) |
+| `MIN_SIMILARITY_SCORE` | 0.7 | 0.0-1.0 | Minimum similarity for dense search (high precision) |
 
 ## 🌐 New API Endpoints
 
