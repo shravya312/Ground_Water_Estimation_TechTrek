@@ -1,0 +1,136 @@
+.visualization-panel {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  border: 1px solid #dee2e6;
+}
+
+.visualization-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.visualization-header h3 {
+  color: #2c3e50;
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.visualization-header p {
+  color: #6c757d;
+  margin: 0;
+  font-size: 1rem;
+}
+
+.visualization-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.visualization-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.visualization-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.visualization-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.visualization-card-header h4 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.download-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.download-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.download-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.visualization-content {
+  padding: 1rem;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.visualization-content > div {
+  width: 100%;
+  height: 100%;
+}
+
+.error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid #f5c6cb;
+  margin-top: 1rem;
+  text-align: center;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .visualization-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .visualization-card-header {
+    flex-direction: column;
+    gap: 0.5rem;
+    text-align: center;
+  }
+  
+  .visualization-panel {
+    padding: 1rem;
+  }
+}
+
+/* Plotly chart styling */
+.visualization-content .plotly {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.visualization-content .js-plotly-plot {
+  width: 100% !important;
+  height: 100% !important;
+}
