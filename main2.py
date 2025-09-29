@@ -1006,7 +1006,7 @@ def expand_query(query, num_terms=3):
         print(f"Error expanding query: {e}")
         return ""
 
-def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None, chat_history=None, extracted_parameters=None, user_language='en'):
+def generate_answer_from_gemini(query, context_data, year=None, target_state=None, target_district=None, chat_history=None, extracted_parameters=None, user_language='en', averages=None):
     """Use Gemini to answer the question based on structured Excel data with multilingual support."""
     if not query or not context_data:
         return "Please provide both a question and relevant data context."
@@ -1019,6 +1019,17 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
     
     # Format structured data into a readable string for the LLM
     data_summary = []
+    
+    # Add average values if available
+    if averages:
+        data_summary.append("=== AVERAGE VALUES (when year not specified) ===")
+        for key, value in averages.items():
+            if key == 'quality_distribution':
+                data_summary.append(f"Quality Distribution: {value}")
+            else:
+                data_summary.append(f"Average {key.replace('_', ' ').title()}: {value}")
+        data_summary.append("")
+    
     for i, item in enumerate(context_data, 1):
         data_summary.append(f"=== DATA ENTRY {i} ===")
         data_summary.append(f"State: {item.get('STATE', 'N/A')}")
@@ -1131,6 +1142,7 @@ def generate_answer_from_gemini(query, context_data, year=None, target_state=Non
 
     prompt = (
         f"You are an expert groundwater data analyst. Provide a comprehensive, well-formatted summary of the groundwater data.{language_instruction}\n"
+        f"IMPORTANT: When you see quality_tagging data in the context, it may contain values like 'PQ', '[Iron]', '[Uranium]', '[Nitrate]', etc. These are actual water quality parameters that should be displayed in the Quality Tagging field, not 'No data available'.\n"
         f"""FORMAT THE OUTPUT EXACTLY AS FOLLOWS:
 
 #  Groundwater Data Analysis Report
@@ -1247,11 +1259,11 @@ Data collection practices vary across states. [STATE NAME] may have different da
 
 | Parameter | Value |
 |-----------|-------|
-| Quality Tagging | [DATA AVAILABLE/NOT AVAILABLE] |
+| Quality Tagging | [USE ACTUAL QUALITY DATA FROM CONTEXT - PQ, Iron, Uranium, Nitrate, etc. or "No data available" if none] |
 
-**Quality Concerns:** [ANALYSIS OF WATER QUALITY CONCERNS]
+**Quality Concerns:** [ANALYSIS OF WATER QUALITY CONCERNS BASED ON ACTUAL QUALITY DATA]
 
-**Treatment Recommendations:** [RECOMMENDATIONS FOR WATER TREATMENT]
+**Treatment Recommendations:** [RECOMMENDATIONS FOR WATER TREATMENT BASED ON DETECTED CONTAMINANTS]
 
 **Environmental Sustainability:** [ASSESSMENT OF ENVIRONMENTAL SUSTAINABILITY]
 
@@ -1311,6 +1323,9 @@ IMPORTANT INSTRUCTIONS:
 - Include specific numerical values with units
 - Provide detailed explanations for each parameter
 - Maintain the professional report structure throughout
+- CRITICAL: For Quality Tagging, use the actual quality data from the context (PQ, Iron, Uranium, Nitrate, etc.) - do NOT just say "No data available" unless the quality_tagging field is truly empty
+- If quality data shows parameters like [Iron], [Uranium], [Nitrate], etc., include them in the Quality Tagging field
+- Analyze the quality parameters and provide meaningful insights about water quality concerns and treatment recommendations
 """
         f"{conversation_history_str}"
         f"{extracted_params_str}"
@@ -1426,30 +1441,200 @@ def search_qdrant_only(query_text, year=None, target_state=None, target_district
         print(f"Error in Qdrant search: {str(e)}")
         return []
 
+def extract_query_parameters(query: str) -> dict:
+    """Extract year, state, and district from query with flexible matching."""
+    query_lower = query.lower()
+    
+    # Extract year
+    year = None
+    year_match = re.search(r'\b(19|20)\d{2}\b', query)
+    if year_match:
+        year = int(year_match.group(0))
+    
+    # Extract state with flexible matching
+    target_state = None
+    state_patterns = {
+        'karnataka': ['karnataka', 'karnatak', 'karnatka'],
+        'maharashtra': ['maharashtra', 'maharastra', 'maharashtra'],
+        'gujarat': ['gujarat', 'gujrat', 'gujrat'],
+        'tamil nadu': ['tamil nadu', 'tamilnadu', 'tamil nadu', 'tamilnadu'],
+        'andhra pradesh': ['andhra pradesh', 'andhra', 'ap'],
+        'telangana': ['telangana', 'telengana'],
+        'kerala': ['kerala', 'keral'],
+        'punjab': ['punjab', 'punjab'],
+        'haryana': ['haryana', 'haryan'],
+        'rajasthan': ['rajasthan', 'rajasthan'],
+        'madhya pradesh': ['madhya pradesh', 'mp', 'madhya'],
+        'uttar pradesh': ['uttar pradesh', 'up', 'uttar'],
+        'bihar': ['bihar', 'bihar'],
+        'west bengal': ['west bengal', 'westbengal', 'bengal'],
+        'odisha': ['odisha', 'orissa', 'odisha'],
+        'assam': ['assam', 'assam'],
+        'jharkhand': ['jharkhand', 'jharkhand'],
+        'chhattisgarh': ['chhattisgarh', 'chhattisgarh'],
+        'himachal pradesh': ['himachal pradesh', 'himachal', 'hp'],
+        'uttarakhand': ['uttarakhand', 'uttaranchal'],
+        'goa': ['goa', 'goa'],
+        'delhi': ['delhi', 'new delhi', 'nct'],
+        'jammu and kashmir': ['jammu and kashmir', 'j&k', 'jammu kashmir'],
+        'ladakh': ['ladakh', 'ladakh'],
+        'arunachal pradesh': ['arunachal pradesh', 'arunachal'],
+        'manipur': ['manipur', 'manipur'],
+        'meghalaya': ['meghalaya', 'meghalaya'],
+        'mizoram': ['mizoram', 'mizoram'],
+        'nagaland': ['nagaland', 'nagaland'],
+        'sikkim': ['sikkim', 'sikkim'],
+        'tripura': ['tripura', 'tripura']
+    }
+    
+    for state_name, patterns in state_patterns.items():
+        for pattern in patterns:
+            if pattern in query_lower:
+                target_state = state_name.upper()
+                break
+        if target_state:
+            break
+    
+    # Extract district (basic pattern matching)
+    target_district = None
+    # Look for common district indicators
+    district_indicators = ['district', 'dist', 'taluk', 'block', 'mandal']
+    for indicator in district_indicators:
+        if indicator in query_lower:
+            # Try to extract the district name after the indicator
+            pattern = rf'{indicator}\s+([a-zA-Z\s]+)'
+            match = re.search(pattern, query_lower)
+            if match:
+                target_district = match.group(1).strip().title()
+                break
+    
+    return {
+        'year': year,
+        'target_state': target_state,
+        'target_district': target_district
+    }
+
+def calculate_average_values(df, target_state=None, target_district=None):
+    """Calculate average values when year is not specified."""
+    if df is None or df.empty:
+        return {}
+    
+    # Filter by state if specified
+    if target_state:
+        df = df[df['STATE'].str.upper() == target_state.upper()]
+    
+    # Filter by district if specified
+    if target_district:
+        df = df[df['DISTRICT'].str.upper() == target_district.upper()]
+    
+    if df.empty:
+        return {}
+    
+    # Calculate averages for key metrics
+    averages = {}
+    
+    # Groundwater extraction
+    extraction_cols = [
+        'Ground Water Extraction for all uses (ha.m) - Total - Total',
+        'ground_water_extraction_for_all_uses_ham'
+    ]
+    for col in extraction_cols:
+        if col in df.columns:
+            avg_val = df[col].mean()
+            if not pd.isna(avg_val):
+                averages['extraction'] = round(avg_val, 2)
+                break
+    
+    # Groundwater recharge
+    recharge_cols = [
+        'Annual Ground water Recharge (ham) - Total - Total',
+        'annual_ground_water_recharge_ham'
+    ]
+    for col in recharge_cols:
+        if col in df.columns:
+            avg_val = df[col].mean()
+            if not pd.isna(avg_val):
+                averages['recharge'] = round(avg_val, 2)
+                break
+    
+    # Rainfall
+    rainfall_cols = [
+        'Rainfall (mm) - Total - Total',
+        'rainfall_mm'
+    ]
+    for col in rainfall_cols:
+        if col in df.columns:
+            avg_val = df[col].mean()
+            if not pd.isna(avg_val):
+                averages['rainfall'] = round(avg_val, 2)
+                break
+    
+    # Stage of extraction
+    stage_cols = [
+        'Stage of Ground Water Extraction (%) - Total - Total',
+        'stage_of_ground_water_extraction_'
+    ]
+    for col in stage_cols:
+        if col in df.columns:
+            avg_val = df[col].mean()
+            if not pd.isna(avg_val):
+                averages['extraction_stage'] = round(avg_val, 2)
+                break
+    
+    # Quality tagging distribution
+    quality_cols = ['quality_tagging', 'Quality Tagging']
+    for col in quality_cols:
+        if col in df.columns:
+            quality_data = df[col].dropna()
+            if not quality_data.empty:
+                quality_dist = quality_data.value_counts().to_dict()
+                averages['quality_distribution'] = quality_dist
+                break
+    
+    return averages
+
 def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> str:
     query = (query or '').strip()
     if not query:
+        print("❌ [QUERY] Empty query received")
         return "Please provide a question."
+    
+    print(f"🔍 [QUERY] New question received: '{query}'")
+    print(f"🌐 [QUERY] User language: {user_language}")
+    if user_id:
+        print(f"👤 [QUERY] User ID: {user_id}")
+    
     try:
+        print("⚙️ [INIT] Initializing components...")
         _init_components()  # Load CSV data
         _init_qdrant()      # Load Qdrant when needed
         _init_gemini()      # Load Gemini when needed
         _init_ml_components()  # Load ML components when needed
+        print("✅ [INIT] All components initialized successfully")
     except Exception as e:
+        print(f"❌ [INIT] Initialization error: {str(e)}")
         return f"Initialization error: {str(e)}"
     
     # Detect and translate query to English for processing
+    print("🔄 [TRANSLATE] Processing query translation...")
     original_query = query
     translated_query, detected_lang = translate_query_to_english(query)
+    if detected_lang != 'en':
+        print(f"🌐 [TRANSLATE] Query translated from {detected_lang} to English")
+    else:
+        print("🌐 [TRANSLATE] Query is already in English")
     
-    year = None
-    year_match = re.search(r'\b(19|20)\d{2}\b', translated_query)
-    if year_match:
-        year = int(year_match.group(0))
+    # Extract parameters with flexible matching
+    print("🔍 [EXTRACT] Extracting query parameters...")
+    params = extract_query_parameters(translated_query)
+    year = params['year']
+    target_state = params['target_state']
+    target_district = params['target_district']
     
-    target_state = None
-    target_district = None
-    print(f"[DEBUG] Extracting location from query: '{translated_query}'")
+    print(f"📊 [EXTRACT] Parameters extracted:")
+    print(f"   📅 Year: {year if year else 'Not specified'}")
+    print(f"   🏛️ State: {target_state if target_state else 'Not specified'}")
+    print(f"   🏘️ District: {target_district if target_district else 'Not specified'}")
     
     # Use hardcoded state matching for common states
     query_lower = translated_query.lower()
@@ -1649,50 +1834,103 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
                             except ValueError:
                                 continue
     
+    print("🔍 [EXPAND] Expanding query terms...")
     expanded_terms = expand_query(translated_query)
     expanded_query_text = f"{translated_query} {expanded_terms}".strip()
+    print(f"📝 [EXPAND] Expanded query: '{expanded_query_text}'")
     
-    # Use ONLY Qdrant for RAG search
+    # Use ONLY Qdrant for RAG search with flexible fallback
+    print("🔍 [SEARCH] Starting Qdrant search...")
+    print(f"   🎯 Target: {target_state or 'All states'}")
+    print(f"   📅 Year: {year or 'All years'}")
+    print(f"   🏘️ District: {target_district or 'All districts'}")
+    
     candidate_results = search_qdrant_only(expanded_query_text, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
+    print(f"📊 [SEARCH] Initial search results: {len(candidate_results) if candidate_results else 0} records found")
     
-    # If no results found with location filters, try without location filters
-    if not candidate_results:
-        # Only try without location filters if no specific state was requested
-        if not target_state:
-            candidate_results = search_qdrant_only(expanded_query_text, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
-            
-            # If still no results, try with just the basic query without expansion
-            if not candidate_results:
-                candidate_results = search_qdrant_only(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
-            
-            # If still no results, try with original query (before translation)
-            if not candidate_results:
-                candidate_results = search_qdrant_only(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+    # If no results found with specific year, try without year filter
+    if not candidate_results and year:
+        print(f"🔄 [SEARCH] No results for year {year}, trying without year filter...")
+        candidate_results = search_qdrant_only(expanded_query_text, year=None, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
+        print(f"📊 [SEARCH] Search without year filter: {len(candidate_results) if candidate_results else 0} records found")
     
-    # If still no results, try with common groundwater keywords only if no specific state was requested
-    if not candidate_results:
-        if not target_state:
-            groundwater_query = "groundwater estimation data analysis"
-            candidate_results = search_qdrant_only(groundwater_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+    # If no results found with district, try with just state
+    if not candidate_results and target_state and target_district:
+        print(f"🔄 [SEARCH] No results for district {target_district}, trying with just state...")
+        candidate_results = search_qdrant_only(expanded_query_text, year=year, target_state=target_state, target_district=None, extracted_parameters=extracted_parameters)
+        print(f"📊 [SEARCH] Search without district filter: {len(candidate_results) if candidate_results else 0} records found")
+    
+    # If no results found with location filters, try without location filters (but only if state was specified)
+    if not candidate_results and target_state:
+        print(f"🔄 [SEARCH] No results with location filters, trying without district filter...")
+        candidate_results = search_qdrant_only(expanded_query_text, year=year, target_state=target_state, target_district=None, extracted_parameters=extracted_parameters)
+        print(f"📊 [SEARCH] Search without district: {len(candidate_results) if candidate_results else 0} records found")
+        
+        # If still no results, try without year filter too
+        if not candidate_results and year:
+            print(f"🔄 [SEARCH] No results with state filter, trying without year filter...")
+            candidate_results = search_qdrant_only(expanded_query_text, year=None, target_state=target_state, target_district=None, extracted_parameters=extracted_parameters)
+            print(f"📊 [SEARCH] Search without year: {len(candidate_results) if candidate_results else 0} records found")
     
     # If no results and a specific state was requested, return a clear message
     if not candidate_results and target_state:
-        return f"No data available for {target_state}."
+        print(f"❌ [RESULT] No data available for {target_state} in the INGRIS groundwater database")
+        return f"No data available for {target_state} in the INGRIS groundwater database."
     
-    # If no results at all, return generic message
+    # If no results at all, return specific message about data sources
     if not candidate_results:
-        return "I couldn't find enough relevant information in the groundwater data to answer your question."
+        print("❌ [RESULT] No data available in the INGRIS groundwater database for the query")
+        return "No data available in the INGRIS groundwater database (ingris_groundwater_collection and ingris_rag_ready_complete.csv) for your query."
     
+    print("🔄 [RERANK] Re-ranking search results...")
     re_ranked_results = re_rank_chunks(expanded_query_text, candidate_results, top_k=5)
     if not re_ranked_results:
-        return "I couldn't find enough relevant information in the groundwater data to answer your question."
+        print("❌ [RESULT] No relevant data found after re-ranking")
+        return "No relevant data found in the INGRIS groundwater database for your query."
     
+    print(f"✅ [RERANK] Re-ranked to top {len(re_ranked_results)} most relevant results")
     context_data = [res['data'] for res in re_ranked_results]
+    
+    # Calculate averages if no specific year requested
+    averages = {}
+    if not year and _master_df is not None:
+        print("📊 [AVERAGE] No year specified, calculating average values...")
+        averages = calculate_average_values(_master_df, target_state, target_district)
+        if averages:
+            print(f"📊 [AVERAGE] Calculated averages: {list(averages.keys())}")
+        else:
+            print("📊 [AVERAGE] No averages calculated")
     
     # Load chat history if user_id provided
     chat_history = None
     if user_id:
+        print(f"💬 [CHAT] Loading chat history for user {user_id}")
         chat_history = load_chat_history(user_id)
+        if chat_history:
+            print(f"💬 [CHAT] Loaded {len(chat_history)} previous messages")
+        else:
+            print("💬 [CHAT] No previous chat history found")
+    
+    print("🤖 [GEMINI] Generating answer using Gemini AI...")
+    
+    # Debug: Check quality data in context
+    quality_data_found = False
+    for i, item in enumerate(context_data[:3]):  # Check first 3 items
+        if 'quality_tagging' in item:
+            quality_val = item['quality_tagging']
+            print(f"🔍 [DEBUG] Quality data in context item {i+1}: {quality_val}")
+            if pd.notna(quality_val) and str(quality_val).strip() not in ['', 'nan', 'None']:
+                quality_data_found = True
+        elif 'Quality Tagging' in item:
+            quality_val = item['Quality Tagging']
+            print(f"🔍 [DEBUG] Quality data in context item {i+1}: {quality_val}")
+            if pd.notna(quality_val) and str(quality_val).strip() not in ['', 'nan', 'None']:
+                quality_data_found = True
+    
+    if quality_data_found:
+        print("✅ [DEBUG] Quality data found in context - should be included in response")
+    else:
+        print("⚠️ [DEBUG] No quality data found in context")
     
     answer = generate_answer_from_gemini(
         translated_query, 
@@ -1702,13 +1940,19 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
         target_district=target_district, 
         chat_history=chat_history, 
         extracted_parameters=extracted_parameters,
-        user_language=user_language
+        user_language=user_language,
+        averages=averages
     )
+    
+    print(f"✅ [GEMINI] Answer generated successfully (length: {len(answer)} characters)")
     
     # Translate answer back to user's language if needed
     if user_language != 'en':
+        print(f"🔄 [TRANSLATE] Translating answer back to {user_language}...")
         answer = translate_answer_to_language(answer, user_language)
+        print("✅ [TRANSLATE] Answer translated successfully")
     
+    print("🎉 [COMPLETE] Query processing completed successfully")
     return answer
 
 # --- Visualization Functions ---
@@ -2047,17 +2291,36 @@ def create_state_analysis_plots(df, selected_state=None):
         )
     
     # 4. Quality Tagging Analysis
-    if 'Quality Tagging' in state_df.columns:
-        quality_data = state_df['Quality Tagging'].value_counts()
-        
-        fig.add_trace(
-            go.Pie(
-                labels=quality_data.index,
-                values=quality_data.values,
-                name="Quality Distribution"
-            ),
-            row=2, col=2
-        )
+    quality_col = None
+    if 'quality_tagging' in state_df.columns:
+        quality_col = 'quality_tagging'
+    elif 'Quality Tagging' in state_df.columns:
+        quality_col = 'Quality Tagging'
+    
+    if quality_col:
+        # Filter out NaN values and get quality distribution
+        quality_data = state_df[quality_col].dropna()
+        if not quality_data.empty:
+            quality_counts = quality_data.value_counts()
+            
+            fig.add_trace(
+                go.Pie(
+                    labels=quality_counts.index,
+                    values=quality_counts.values,
+                    name="Quality Distribution"
+                ),
+                row=2, col=2
+            )
+        else:
+            # Show "No Quality Data Available" if all values are NaN
+            fig.add_trace(
+                go.Pie(
+                    labels=["No Quality Data Available"],
+                    values=[1],
+                    name="Quality Distribution"
+                ),
+                row=2, col=2
+            )
     
     # Update layout with improved spacing to prevent overlapping
     fig.update_layout(
@@ -2525,12 +2788,24 @@ async def get_available_states():
 @app.post("/ask")
 async def ask(request: AskRequest):
     """Main endpoint for asking questions about groundwater data."""
+    print(f"🌐 [API] /ask endpoint called")
+    print(f"📝 [API] Query: '{request.query[:100]}{'...' if len(request.query) > 100 else ''}'")
+    print(f"🌐 [API] Language: {request.language or 'Auto-detect'}")
+    print(f"👤 [API] User ID: {request.user_id or 'Anonymous'}")
+    
     query = request.query.strip()
     if not query:
+        print("❌ [API] Empty query received")
         raise HTTPException(status_code=400, detail="Missing 'query'")
     try:
         user_lang = request.language or detect_language(query)
+        print(f"🔍 [API] Detected language: {user_lang}")
+        
         answer = answer_query(query, user_lang, request.user_id)
+        
+        print(f"✅ [API] Answer generated successfully")
+        print(f"📊 [API] Response length: {len(answer)} characters")
+        
         return {
             "answer": answer, 
             "detected_lang": detect_language(query),
@@ -2538,6 +2813,7 @@ async def ask(request: AskRequest):
             "query": query
         }
     except Exception as exc:
+        print(f"❌ [API] Error processing query: {str(exc)}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 @app.post("/register")
@@ -2648,11 +2924,19 @@ async def upload_data():
 @app.post("/ask-formatted")
 async def ask_formatted(request: AskRequest):
     """Main endpoint for asking questions about groundwater data with enhanced formatting."""
+    print(f"🌐 [API] /ask-formatted endpoint called")
+    print(f"📝 [API] Query: '{request.query[:100]}{'...' if len(request.query) > 100 else ''}'")
+    print(f"🌐 [API] Language: {request.language or 'Auto-detect'}")
+    print(f"👤 [API] User ID: {request.user_id or 'Anonymous'}")
+    
     query = request.query.strip()
     if not query:
+        print("❌ [API] Empty query received")
         raise HTTPException(status_code=400, detail="Missing 'query'")
     try:
         user_lang = request.language or detect_language(query)
+        print(f"🔍 [API] Detected language: {user_lang}")
+        
         answer = answer_query(query, user_lang, request.user_id)
         
         # Add additional formatting instructions for better structure
@@ -2670,6 +2954,9 @@ async def ask_formatted(request: AskRequest):
 *Language: {SUPPORTED_LANGUAGES.get(user_lang, user_lang)}*
         """
         
+        print(f"✅ [API] Formatted answer generated successfully")
+        print(f"📊 [API] Formatted response length: {len(formatted_answer)} characters")
+        
         return {
             "answer": formatted_answer.strip(), 
             "detected_lang": detect_language(query),
@@ -2678,6 +2965,7 @@ async def ask_formatted(request: AskRequest):
             "formatted": True
         }
     except Exception as exc:
+        print(f"❌ [API] Error processing formatted query: {str(exc)}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 # --- Visualization API Endpoints ---
