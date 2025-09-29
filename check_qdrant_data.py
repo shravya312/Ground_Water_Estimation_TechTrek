@@ -1,150 +1,86 @@
 #!/usr/bin/env python3
 """
-Check Qdrant data in ingris_groundwater_collection
+Check Qdrant collection data structure
 """
 
 import os
-from qdrant_client import QdrantClient
-from qdrant_client.models import Filter, FieldCondition, MatchValue
 from dotenv import load_dotenv
-from collections import Counter
-
-load_dotenv()
+from qdrant_client import QdrantClient
 
 def check_qdrant_data():
-    """Check the actual data in Qdrant collection"""
-    print("🔍 Checking Qdrant Data in ingris_groundwater_collection")
-    print("=" * 60)
-    
-    QDRANT_URL = os.getenv("QDRANT_URL")
-    QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-    COLLECTION_NAME = "ingris_groundwater_collection"
-    
+    """Check what data is available in Qdrant collection"""
     try:
+        # Load environment variables
+        load_dotenv()
+        
+        qdrant_url = os.getenv("QDRANT_URL")
+        qdrant_api_key = os.getenv("QDRANT_API_KEY")
+        
+        print(f"Connecting to Qdrant: {qdrant_url}")
+        
         # Connect to Qdrant
-        print("🔄 Connecting to Qdrant...")
-        client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, timeout=60)
-        
-        # Get collection info
-        print("🔄 Getting collection information...")
-        collection_info = client.get_collection(COLLECTION_NAME)
-        print(f"✅ Collection: {COLLECTION_NAME}")
-        print(f"✅ Total Points: {collection_info.points_count:,}")
-        print(f"✅ Vector Size: {collection_info.config.params.vectors.size}")
-        print(f"✅ Distance Metric: {collection_info.config.params.vectors.distance}")
-        
-        # Sample some data to check structure
-        print("\n🔄 Sampling data to check structure...")
-        sample_points, _ = client.scroll(
-            collection_name=COLLECTION_NAME,
-            limit=5,
-            with_payload=True,
-            with_vectors=False
+        client = QdrantClient(
+            url=qdrant_url,
+            api_key=qdrant_api_key if qdrant_api_key else None,
+            timeout=30,
+            prefer_grpc=False
         )
         
-        print(f"✅ Retrieved {len(sample_points)} sample points")
+        # Get collection info
+        collection_info = client.get_collection("ingris_groundwater_collection")
+        print(f"Collection points: {collection_info.points_count}")
         
-        if sample_points:
-            print("\n📊 Sample Point Structure:")
-            for i, point in enumerate(sample_points, 1):
-                print(f"\n--- Point {i} ---")
-                print(f"ID: {point.id}")
-                print(f"Payload keys: {list(point.payload.keys())}")
-                
-                # Show key fields
-                for key in ['STATE', 'DISTRICT', 'Assessment_Year', 'rainfall_mm', 'ground_water_recharge_ham']:
-                    if key in point.payload:
-                        print(f"{key}: {point.payload[key]}")
+        # Get sample data
+        print("\nFetching sample data...")
+        scroll_result, _ = client.scroll(
+            collection_name="ingris_groundwater_collection",
+            limit=5,
+            with_payload=True
+        )
         
-        # Check states in the data
-        print("\n🔄 Analyzing states in the data...")
-        all_states = []
-        batch_size = 1000
-        offset = None
+        print(f"Sample records: {len(scroll_result)}")
         
-        while True:
-            scroll_result, next_page_offset = client.scroll(
-                collection_name=COLLECTION_NAME,
-                limit=batch_size,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False
-            )
+        if scroll_result:
+            print("\nSample record structure:")
+            sample = scroll_result[0]
+            print(f"ID: {sample.id}")
+            print(f"Payload keys: {list(sample.payload.keys())}")
             
-            if not scroll_result:
-                break
-                
-            for point in scroll_result:
-                if 'STATE' in point.payload and point.payload['STATE']:
-                    all_states.append(point.payload['STATE'])
-            
-            offset = next_page_offset
-            if offset is None:
-                break
-            
-            print(f"   Processed {len(all_states)} records so far...")
+            # Show sample payload
+            for key, value in sample.payload.items():
+                if isinstance(value, str) and len(value) > 100:
+                    print(f"{key}: {value[:100]}...")
+                else:
+                    print(f"{key}: {value}")
         
-        # Analyze states
-        state_counts = Counter(all_states)
-        print(f"\n📊 State Analysis (Total: {len(all_states)} records):")
-        print("=" * 40)
-        
-        for state, count in state_counts.most_common():
-            print(f"{state}: {count:,} records")
-        
-        # Check specifically for Odisha
-        print(f"\n🔍 Checking for Odisha specifically:")
-        odisha_variations = ['ODISHA', 'ORISSA', 'odisha', 'orissa']
-        for variation in odisha_variations:
-            count = state_counts.get(variation, 0)
-            print(f"   {variation}: {count} records")
-        
-        # Check for similar states
-        print(f"\n🔍 States with similar names to Odisha:")
-        similar_states = [state for state in state_counts.keys() 
-                         if any(word in state.upper() for word in ['ODISHA', 'ORISSA', 'ODI', 'ORI'])]
-        for state in similar_states:
-            print(f"   {state}: {state_counts[state]} records")
-        
-        # Sample Odisha data if it exists
-        odisha_states = [state for state in state_counts.keys() 
-                        if 'ODISHA' in state.upper() or 'ORISSA' in state.upper()]
-        
-        if odisha_states:
-            print(f"\n📊 Sample Odisha Data:")
-            odisha_filter = Filter(
-                must=[
-                    FieldCondition(
-                        key="STATE",
-                        match=MatchValue(value=odisha_states[0])
-                    )
+        # Check for state data
+        print("\nChecking for state data...")
+        search_result = client.search(
+            collection_name="ingris_groundwater_collection",
+            query_vector=[0.0] * 768,  # Dummy vector
+            query_filter={
+                "must": [
+                    {"key": "STATE", "match": {"value": "KARNATAKA"}}
                 ]
-            )
-            
-            odisha_sample, _ = client.scroll(
-                collection_name=COLLECTION_NAME,
-                scroll_filter=odisha_filter,
-                limit=3,
-                with_payload=True,
-                with_vectors=False
-            )
-            
-            for i, point in enumerate(odisha_sample, 1):
-                print(f"\n--- Odisha Sample {i} ---")
-                payload = point.payload
-                print(f"State: {payload.get('STATE')}")
-                print(f"District: {payload.get('DISTRICT')}")
-                print(f"Year: {payload.get('Assessment_Year')}")
-                print(f"Rainfall: {payload.get('rainfall_mm')} mm")
-                print(f"Recharge: {payload.get('ground_water_recharge_ham')} ham")
-        else:
-            print("\n❌ No Odisha data found in the collection")
+            },
+            limit=3,
+            with_payload=True
+        )
         
-        return True
+        print(f"Karnataka records found: {len(search_result)}")
+        if search_result:
+            print("Sample Karnataka record:")
+            sample = search_result[0]
+            for key, value in sample.payload.items():
+                if isinstance(value, str) and len(value) > 100:
+                    print(f"{key}: {value[:100]}...")
+                else:
+                    print(f"{key}: {value}")
         
     except Exception as e:
-        print(f"❌ Error: {e}")
-        return False
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     check_qdrant_data()

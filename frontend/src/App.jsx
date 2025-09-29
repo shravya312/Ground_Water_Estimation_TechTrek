@@ -6,6 +6,7 @@ import Landing from './pages/Landing'
 import Groundwater from './pages/Groundwater'
 import Resources from './pages/Resources'
 import Chat1 from './pages/Chat1.jsx'
+import Charts from './pages/Charts'
 import AtHome from './pages/AtHome'
 import InYourCommunity from './pages/InYourCommunity'
 import GroundwaterDemo from './components/GroundwaterDemo'
@@ -23,6 +24,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/chat" element={user ? <Chat1 /> : <Navigate to="/" replace />} />
+        <Route path="/charts" element={user ? <Charts /> : <Navigate to="/" replace />} />
         <Route path="/demo" element={<GroundwaterDemo />} />
         <Route path="/groundwater" element={<Groundwater />} />
         <Route path="/resources" element={<Resources />} />

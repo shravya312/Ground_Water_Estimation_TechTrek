@@ -300,6 +300,9 @@ def _init_components():
             _master_df['STATE'] = _master_df['state'].fillna('').astype(str)
             _master_df['DISTRICT'] = _master_df['district'].fillna('').astype(str)
             _master_df['ASSESSMENT UNIT'] = _master_df['assessment_unit'].fillna('').astype(str)
+            # Handle year column with 'Unknown' values
+            _master_df['year'] = _master_df['year'].replace('Unknown', 2020)
+            _master_df['Assessment_Year'] = pd.to_numeric(_master_df['year'], errors='coerce').fillna(2020).astype(int)
             print("Data ready")
         except FileNotFoundError:
             raise Exception("Error: ingris_rag_ready_complete.csv not found.")
@@ -315,16 +318,31 @@ def _init_qdrant():
     if _qdrant_client is None:
         try:
             print("Connecting to Qdrant...")
+            print(f"Qdrant URL: {QDRANT_URL}")
+            print(f"API Key present: {bool(QDRANT_API_KEY)}")
+            
             _qdrant_client = QdrantClient(
                 url=QDRANT_URL, 
                 api_key=QDRANT_API_KEY if QDRANT_API_KEY else None, 
-                timeout=30,
+                timeout=10,  # Reduced timeout
                 prefer_grpc=False
             )
-            print("Qdrant ready")
+            
+            # Test the connection with a simple operation
+            try:
+                collections = _qdrant_client.get_collections()
+                print(f"Qdrant ready - Found {len(collections.collections)} collections")
+            except Exception as test_e:
+                print(f"Qdrant connection test failed: {test_e}")
+                # Don't fail completely, just warn
+                print("Qdrant client created but connection test failed")
+            
         except Exception as e:
-            print(f"Qdrant failed: {str(e)}")
+            print(f"Qdrant initialization failed: {str(e)}")
             _qdrant_client = None
+            raise e  # Re-raise to be caught by the startup handler
+    else:
+        print("Qdrant client already initialized")
 
 def _init_gemini():
     """Initialize Gemini when needed"""
@@ -334,7 +352,7 @@ def _init_gemini():
         try:
             print("Initializing Gemini...")
             genai.configure(api_key=GEMINI_API_KEY)
-            _gemini_model = genai.GenerativeModel('models/gemini-2.0-flash')
+            _gemini_model = genai.GenerativeModel('gemini-2.5-flash')
             print("Gemini ready")
         except Exception as e:
             print(f"Gemini failed: {str(e)}")
@@ -610,23 +628,35 @@ def _load_bm25():
     if _bm25_model is not None:
         return
     try:
-        collection_info = _qdrant_client.get_collection(collection_name=COLLECTION_NAME)
-        if collection_info.points_count > 0:
-            scroll_result, _ = _qdrant_client.scroll(
-                collection_name=COLLECTION_NAME,
-                limit=100000,
-                with_payload=True,
-                with_vectors=False
-            )
-            _all_chunks = [point.payload.get("text", "") for point in scroll_result if point.payload.get("text")]
-            _bm25_df = pd.DataFrame([point.payload for point in scroll_result])
-            _bm25_df['combined_text'] = _all_chunks
-        else:
+        # Use CSV data (162k records) ONLY for visualization
+        # Qdrant is used for all search operations
+        if _master_df is not None and not _master_df.empty:
             _all_chunks = _master_df['combined_text'].tolist()
             _bm25_df = _master_df.copy()
+            print(f"Using CSV data for visualization only: {len(_master_df)} records available")
+        else:
+            # Fallback to Qdrant only if CSV data is not available
+            collection_info = _qdrant_client.get_collection(collection_name=COLLECTION_NAME)
+            if collection_info.points_count > 0:
+                scroll_result, _ = _qdrant_client.scroll(
+                    collection_name=COLLECTION_NAME,
+                    limit=100000,
+                    with_payload=True,
+                    with_vectors=False
+                )
+                _all_chunks = [point.payload.get("text", "") for point in scroll_result if point.payload.get("text")]
+                _bm25_df = pd.DataFrame([point.payload for point in scroll_result])
+                _bm25_df['combined_text'] = _all_chunks
+                print(f"Using Qdrant data for visualization (CSV not available): {len(_all_chunks)} records")
+            else:
+                _all_chunks = []
+                _bm25_df = pd.DataFrame()
+                print("No data available for visualization")
+        
         if _all_chunks:
             tokenized_chunks = [tokenize_text(chunk) for chunk in _all_chunks]
             _bm25_model = BM25Okapi(tokenized_chunks)
+            print(f"BM25 model initialized for visualization with {len(_all_chunks)} text chunks")
     except Exception as e:
         print(f"Warning: Could not initialize BM25: {e}")
         _bm25_model = None
@@ -795,7 +825,7 @@ def expand_query(query_text):
     expanded_query = " ".join(expanded_terms[:3])  # Limit to 3 terms max
     return expanded_query
 
-def search_excel_chunks(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
+def search_qdrant_rag(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
     """Simple, reliable search using the working method from karnataka_search.py"""
     _init_components()  # Load CSV data
     _init_qdrant()      # Load Qdrant when needed
@@ -1372,6 +1402,30 @@ def save_chat_history(username: str, messages: List[Dict[str, str]]) -> None:
     except Exception:
         pass
 
+def search_qdrant_only(query_text, year=None, target_state=None, target_district=None, extracted_parameters=None):
+    """Use ONLY Qdrant for RAG search, CSV only for visualization"""
+    _init_components()  # Load CSV data for visualization
+    _init_qdrant()      # Load Qdrant for RAG search
+    
+    try:
+        # Use ONLY Qdrant for search - no CSV fallback
+        if _qdrant_client is not None:
+            print("Using Qdrant for RAG search...")
+            qdrant_results = search_qdrant_rag(query_text, year, target_state, target_district, extracted_parameters)
+            if qdrant_results:
+                print(f"Qdrant RAG found {len(qdrant_results)} results")
+                return qdrant_results
+            else:
+                print("No results found in Qdrant")
+                return []
+        else:
+            print("Qdrant not available - no search possible")
+            return []
+        
+    except Exception as e:
+        print(f"Error in Qdrant search: {str(e)}")
+        return []
+
 def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> str:
     query = (query or '').strip()
     if not query:
@@ -1598,27 +1652,28 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     expanded_terms = expand_query(translated_query)
     expanded_query_text = f"{translated_query} {expanded_terms}".strip()
     
-    candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
+    # Use ONLY Qdrant for RAG search
+    candidate_results = search_qdrant_only(expanded_query_text, year=year, target_state=target_state, target_district=target_district, extracted_parameters=extracted_parameters)
     
-    # If no results found with location filters, check if we should use fallback
+    # If no results found with location filters, try without location filters
     if not candidate_results:
-        # Only use fallback if no specific state was requested
+        # Only try without location filters if no specific state was requested
         if not target_state:
-            candidate_results = search_excel_chunks(expanded_query_text, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+            candidate_results = search_qdrant_only(expanded_query_text, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
             
             # If still no results, try with just the basic query without expansion
             if not candidate_results:
-                candidate_results = search_excel_chunks(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+                candidate_results = search_qdrant_only(translated_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
             
             # If still no results, try with original query (before translation)
             if not candidate_results:
-                candidate_results = search_excel_chunks(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+                candidate_results = search_qdrant_only(original_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
     # If still no results, try with common groundwater keywords only if no specific state was requested
     if not candidate_results:
         if not target_state:
             groundwater_query = "groundwater estimation data analysis"
-            candidate_results = search_excel_chunks(groundwater_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
+            candidate_results = search_qdrant_only(groundwater_query, year=year, target_state=None, target_district=None, extracted_parameters=extracted_parameters)
     
     # If no results and a specific state was requested, return a clear message
     if not candidate_results and target_state:
@@ -1657,10 +1712,28 @@ def answer_query(query: str, user_language: str = 'en', user_id: str = None) -> 
     return answer
 
 # --- Visualization Functions ---
+
+def ensure_unique_data(df):
+    """Ensure data uniqueness to prevent overlapping in visualizations."""
+    if df is None or df.empty:
+        return df
+    
+    # Remove duplicates based on combined_text to prevent overlapping
+    if 'combined_text' in df.columns:
+        original_count = len(df)
+        df = df.drop_duplicates(subset=['combined_text'], keep='first')
+        removed_count = original_count - len(df)
+        if removed_count > 0:
+            print(f"Removed {removed_count} duplicate records. Using {len(df)} unique records for visualization.")
+    
+    return df
 def create_groundwater_overview_dashboard(df):
     """Create a comprehensive overview dashboard of groundwater data."""
     if df is None or df.empty:
         return None
+    
+    # Ensure we're working with unique data to prevent overlapping
+    df = ensure_unique_data(df)
     
     # Create subplots
     fig = make_subplots(
@@ -1790,10 +1863,86 @@ def create_groundwater_overview_dashboard(df):
     
     return fig
 
+def fetch_state_data_from_qdrant(selected_state=None):
+    """Fetch state data from Qdrant collection"""
+    if _qdrant_client is None:
+        print("Qdrant client not available")
+        return None
+    
+    try:
+        print(f"Fetching data for state: {selected_state}")
+        
+        # Build query filter
+        scroll_filter = None
+        if selected_state:
+            scroll_filter = {
+                "must": [
+                    {"key": "STATE", "match": {"value": selected_state}}
+                ]
+            }
+        
+        # Fetch data with smaller batches
+        all_data = []
+        offset = None
+        
+        while True:
+            scroll_result, next_offset = _qdrant_client.scroll(
+                collection_name="ingris_groundwater_collection",
+                limit=1000,  # Smaller batch size
+                offset=offset,
+                scroll_filter=scroll_filter,
+                with_payload=True
+            )
+            
+            if not scroll_result:
+                break
+                
+            all_data.extend(scroll_result)
+            
+            # If we got fewer records than requested, we're done
+            if len(scroll_result) < 1000:
+                break
+                
+            offset = next_offset
+            
+            # Safety check to avoid infinite loop
+            if len(all_data) > 5000:  # Reasonable limit
+                break
+        
+        print(f"Found {len(all_data)} records")
+        
+        if not all_data:
+            print("No data found in Qdrant")
+            return None
+        
+        # Convert to DataFrame
+        data = []
+        for point in all_data:
+            payload = point.payload
+            data.append(payload)
+        
+        df = pd.DataFrame(data)
+        print(f"Created DataFrame with {len(df)} rows and {len(df.columns)} columns")
+        return df
+        
+    except Exception as e:
+        print(f"Error fetching data from Qdrant: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 def create_state_analysis_plots(df, selected_state=None):
-    """Create detailed analysis plots for a specific state or all states."""
+    """Create state-specific analysis plots with deduplication and improved spacing."""
     if df is None or df.empty:
         return None
+    
+    # Ensure we're working with unique data to prevent overlapping
+    df = ensure_unique_data(df)
+    
+    # Limit data points to prevent overcrowding
+    if len(df) > 50:
+        print(f"Limiting data from {len(df)} to 50 records to prevent overcrowding")
+        df = df.sample(n=50, random_state=42)
     
     # Filter data for selected state if provided
     if selected_state:
@@ -1806,7 +1955,7 @@ def create_state_analysis_plots(df, selected_state=None):
     if state_df.empty:
         return None
     
-    # Create subplots
+    # Create subplots with improved spacing to prevent overlap
     fig = make_subplots(
         rows=2, cols=2,
         subplot_titles=[
@@ -1818,27 +1967,42 @@ def create_state_analysis_plots(df, selected_state=None):
         specs=[
             [{"type": "bar"}, {"type": "box"}],
             [{"type": "scatter"}, {"type": "pie"}]
-        ]
+        ],
+        vertical_spacing=0.2,  # Increased vertical spacing
+        horizontal_spacing=0.15  # Increased horizontal spacing
     )
     
     # 1. Groundwater Extraction by District
+    extraction_col = None
     if 'Ground Water Extraction for all uses (ha.m) - Total - Total' in state_df.columns:
         extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
-        district_extraction = state_df.groupby('DISTRICT')[extraction_col].sum().sort_values(ascending=False).head(10)
+    elif 'ground_water_extraction_for_all_uses_ham' in state_df.columns:
+        extraction_col = 'ground_water_extraction_for_all_uses_ham'
+    
+    if extraction_col:
+        district_extraction = state_df.groupby('DISTRICT')[extraction_col].sum().sort_values(ascending=False).head(8)  # Reduced to 8 districts
         
         fig.add_trace(
             go.Bar(
                 x=district_extraction.index,
                 y=district_extraction.values,
                 name="Extraction by District",
-                marker_color='skyblue'
+                marker_color='skyblue',
+                text=district_extraction.values,
+                textposition='outside',
+                textfont=dict(size=10)
             ),
             row=1, col=1
         )
     
     # 2. Rainfall Distribution
+    rainfall_col = None
     if 'Rainfall (mm) - Total - Total' in state_df.columns:
         rainfall_col = 'Rainfall (mm) - Total - Total'
+    elif 'rainfall_mm' in state_df.columns:
+        rainfall_col = 'rainfall_mm'
+    
+    if rainfall_col:
         rainfall_data = state_df[rainfall_col].dropna()
         
         fig.add_trace(
@@ -1851,12 +2015,18 @@ def create_state_analysis_plots(df, selected_state=None):
         )
     
     # 3. Recharge vs Extraction Scatter
-    if ('Annual Ground water Recharge (ham) - Total - Total' in state_df.columns and 
-        'Ground Water Extraction for all uses (ha.m) - Total - Total' in state_df.columns):
+    recharge_col = None
+    if 'Annual Ground water Recharge (ham) - Total - Total' in state_df.columns:
         recharge_col = 'Annual Ground water Recharge (ham) - Total - Total'
-        extraction_col = 'Ground Water Extraction for all uses (ha.m) - Total - Total'
-        
+    elif 'annual_ground_water_recharge_ham' in state_df.columns:
+        recharge_col = 'annual_ground_water_recharge_ham'
+    
+    if recharge_col and extraction_col:
         scatter_data = state_df[[recharge_col, extraction_col]].dropna()
+        
+        # Limit scatter plot data to prevent overcrowding
+        if len(scatter_data) > 30:
+            scatter_data = scatter_data.sample(n=30, random_state=42)
         
         fig.add_trace(
             go.Scatter(
@@ -1865,13 +2035,13 @@ def create_state_analysis_plots(df, selected_state=None):
                 mode='markers',
                 name="Recharge vs Extraction",
                 marker=dict(
-                    color=scatter_data[recharge_col],
-                    size=8,
-                    opacity=0.7,
-                    colorscale='Viridis',
-                    showscale=True
+                    color='lightblue',
+                    size=12,  # Larger markers for better visibility
+                    opacity=0.8,
+                    line=dict(width=1, color='darkblue')
                 ),
-                text=scatter_data.index
+                text=[f"District: {idx}" for idx in scatter_data.index],
+                hovertemplate='<b>%{text}</b><br>Recharge: %{x}<br>Extraction: %{y}<extra></extra>'
             ),
             row=2, col=1
         )
@@ -1889,26 +2059,75 @@ def create_state_analysis_plots(df, selected_state=None):
             row=2, col=2
         )
     
-    # Update layout with white text for dark theme
+    # Update layout with improved spacing to prevent overlapping
     fig.update_layout(
-        height=800,
+        height=1200,  # Increased height for better spacing
         title_text=f"Detailed State Analysis{title_suffix}",
         title_x=0.5,
-        showlegend=False,
+        showlegend=True,
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='white'),
-        title_font=dict(color='white'),
-        xaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)'),
-        yaxis=dict(color='white', gridcolor='rgba(255,255,255,0.2)')
+        font=dict(color='white', size=12),  # Smaller font to prevent overlap
+        title_font=dict(color='white', size=18),
+        margin=dict(l=100, r=100, t=150, b=100),  # Increased margins
+        # Improved axis settings to prevent label overlap
+        xaxis=dict(
+            color='white', 
+            gridcolor='rgba(255,255,255,0.2)', 
+            tickangle=-45,
+            tickfont=dict(size=10),
+            showticklabels=True,
+            nticks=8  # Limit number of ticks
+        ),
+        yaxis=dict(
+            color='white', 
+            gridcolor='rgba(255,255,255,0.2)',
+            tickfont=dict(size=10)
+        ),
+        xaxis2=dict(
+            color='white', 
+            gridcolor='rgba(255,255,255,0.2)',
+            tickfont=dict(size=10)
+        ),
+        yaxis2=dict(
+            color='white', 
+            gridcolor='rgba(255,255,255,0.2)',
+            tickfont=dict(size=10)
+        ),
+        xaxis3=dict(
+            color='white', 
+            gridcolor='rgba(255,255,255,0.2)',
+            tickfont=dict(size=10)
+        ),
+        yaxis3=dict(
+            color='white', 
+            gridcolor='rgba(255,255,255,0.2)',
+            tickfont=dict(size=10)
+        ),
+        xaxis4=dict(
+            color='white', 
+            gridcolor='rgba(255,255,255,0.2)',
+            tickfont=dict(size=10)
+        ),
+        yaxis4=dict(
+            color='white', 
+            gridcolor='rgba(255,255,255,0.2)',
+            tickfont=dict(size=10)
+        )
     )
+    
+    # Update subplot titles font size
+    fig.update_annotations(font_size=14, selector=dict(type="annotation"))
     
     return fig
 
 def create_temporal_analysis_plots(df):
-    """Create temporal analysis plots showing trends over time."""
+    """Create temporal analysis plots with deduplication."""
     if df is None or df.empty:
         return None
+    
+    # Ensure we're working with unique data to prevent overlapping
+    df = ensure_unique_data(df)
     
     # Create subplots
     fig = make_subplots(
@@ -2008,8 +2227,14 @@ def create_temporal_analysis_plots(df):
     return fig
 
 def create_geographical_heatmap(df, metric='Annual Ground water Recharge (ham) - Total - Total'):
-    """Create a geographical heatmap of groundwater metrics by state."""
-    if df is None or df.empty or metric not in df.columns:
+    """Create geographical heatmap with deduplication."""
+    if df is None or df.empty:
+        return None
+    
+    # Ensure we're working with unique data to prevent overlapping
+    df = ensure_unique_data(df)
+    
+    if metric not in df.columns:
         return None
     
     # Aggregate data by state
@@ -2046,9 +2271,12 @@ def create_geographical_heatmap(df, metric='Annual Ground water Recharge (ham) -
     return fig
 
 def create_correlation_matrix_plot(df):
-    """Create a correlation matrix heatmap of numerical groundwater parameters."""
+    """Create correlation matrix plot with deduplication."""
     if df is None or df.empty:
         return None
+    
+    # Ensure we're working with unique data to prevent overlapping
+    df = ensure_unique_data(df)
     
     # Select numerical columns
     numerical_cols = df.select_dtypes(include=[np.number]).columns.tolist()
@@ -2089,9 +2317,12 @@ def create_correlation_matrix_plot(df):
     return fig
 
 def create_statistical_summary_plots(df):
-    """Create statistical summary plots including distribution and box plots."""
+    """Create statistical summary plots with deduplication."""
     if df is None or df.empty:
         return None
+    
+    # Ensure we're working with unique data to prevent overlapping
+    df = ensure_unique_data(df)
     
     # Select key numerical columns
     key_columns = [
@@ -2168,10 +2399,16 @@ async def get_state_analysis(state: Optional[str] = None):
     """Get detailed state analysis plots."""
     try:
         _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
+        if _qdrant_client is None:
+            raise HTTPException(status_code=400, detail="Qdrant client not available")
         
-        fig = create_state_analysis_plots(_master_df, state)
+        # Fetch data from Qdrant
+        df = fetch_state_data_from_qdrant(state)
+        
+        if df is None or df.empty:
+            raise HTTPException(status_code=400, detail="No data available for the selected state")
+        
+        fig = create_state_analysis_plots(df, state)
         if fig is None:
             raise HTTPException(status_code=500, detail="Unable to create state analysis")
         
@@ -2268,11 +2505,19 @@ async def get_available_metrics():
 async def get_available_states():
     """Get list of available states for state analysis."""
     try:
-        _init_components()
-        if _master_df is None:
-            raise HTTPException(status_code=400, detail="No data loaded")
+        # Return a hardcoded list of states for now to avoid Qdrant timeout issues
+        # This can be improved later with proper Qdrant integration
+        available_states = [
+            "ANDHRA PRADESH", "ARUNACHAL PRADESH", "ASSAM", "BIHAR", "CHHATTISGARH",
+            "DELHI", "GOA", "GUJARAT", "HARYANA", "HIMACHAL PRADESH",
+            "JAMMU AND KASHMIR", "JHARKHAND", "KARNATAKA", "KERALA", "MADHYA PRADESH",
+            "MAHARASHTRA", "MANIPUR", "MEGHALAYA", "MIZORAM", "NAGALAND",
+            "ODISHA", "PUNJAB", "RAJASTHAN", "SIKKIM", "TAMIL NADU",
+            "TELANGANA", "TRIPURA", "UTTAR PRADESH", "UTTARAKHAND", "WEST BENGAL",
+            "ANDAMAN AND NICOBAR ISLANDS", "CHANDIGARH", "DADRA AND NAGAR HAVELI AND DAMAN AND DIU",
+            "LAKSHADWEEP", "PUDUCHERRY"
+        ]
         
-        available_states = sorted([s for s in _master_df['STATE'].unique() if pd.notna(s)])
         return {"states": available_states, "success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -4142,7 +4387,6 @@ async def get_groundwater_summary_by_coordinates(lat: float, lon: float):
 async def health_check():
     """Health check endpoint."""
     try:
-        _init_components()
         return {
             "status": "healthy",
             "qdrant_connected": _qdrant_client is not None,
@@ -4153,6 +4397,11 @@ async def health_check():
         }
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {"message": "Groundwater Data Analysis API", "status": "running"}
 
 @app.on_event("startup")
 async def startup_event():
@@ -4167,43 +4416,40 @@ async def startup_event():
         await loop.run_in_executor(None, _init_components)
         print("[OK] Core components initialized")
         
-        # Initialize collection with timeout
+        # Initialize Qdrant client with timeout
+        collection_setup = False
         try:
-            collection_setup = await loop.run_in_executor(None, setup_collection)
+            print("[INIT] Initializing Qdrant client...")
+            await asyncio.wait_for(
+                loop.run_in_executor(None, _init_qdrant), 
+                timeout=10.0
+            )
+            print("[OK] Qdrant client initialized")
+            
+            # Test collection setup with timeout
+            print("[INIT] Setting up Qdrant collection...")
+            collection_setup = await asyncio.wait_for(
+                loop.run_in_executor(None, setup_collection),
+                timeout=15.0
+            )
             if collection_setup:
                 print("[OK] Qdrant collection ready")
             else:
                 print("[WARNING] Qdrant collection setup failed, continuing with limited functionality")
+        except asyncio.TimeoutError:
+            print("[WARNING] Qdrant initialization timed out, continuing with limited functionality")
         except Exception as e:
-            print(f"[WARNING] Qdrant collection error: {e}, continuing with limited functionality")
-            collection_setup = False
+            print(f"[WARNING] Qdrant initialization error: {e}, continuing with limited functionality")
         
-        # Initialize BM25 and embeddings
-        if collection_setup and not _embeddings_uploaded:
-            try:
-                if check_excel_embeddings_exist():
-                    await loop.run_in_executor(None, _load_bm25)
-                    _embeddings_uploaded = True
-                    print("[OK] Excel data embeddings loaded and BM25 initialized.")
-                else:
-                    if _master_df is not None:
-                        print("⏳ Uploading Excel data to Qdrant...")
-                        upload_success = await loop.run_in_executor(None, upload_excel_to_qdrant, _master_df)
-                        if upload_success:
-                            await loop.run_in_executor(None, _load_bm25)
-                            _embeddings_uploaded = True
-                            print("[OK] Excel data processed and indexed.")
-                        else:
-                            print("[ERROR] Failed to upload Excel data embeddings to Qdrant.")
-            except Exception as e:
-                print(f"[WARNING] Embedding initialization error: {e}")
-        elif _bm25_model is None:
-            try:
-                print(" Embeddings previously uploaded. Initializing BM25 from existing data...")
-                await loop.run_in_executor(None, _load_bm25)
-                print("[OK] BM25 initialized from existing data")
-            except Exception as e:
-                print(f"[WARNING] BM25 initialization error: {e}")
+        # Initialize BM25 for search fallback (skip data upload during startup)
+        try:
+            print("[INIT] Initializing BM25...")
+            await loop.run_in_executor(None, _load_bm25)
+            print("[OK] BM25 initialized")
+        except Exception as e:
+            print(f"[WARNING] BM25 initialization error: {e}")
+        
+        print("Note: Data upload to Qdrant can be done via /upload-data endpoint")
         
         print(" Groundwater RAG API started successfully!")
     except Exception as e:
