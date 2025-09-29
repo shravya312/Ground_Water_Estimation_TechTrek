@@ -1,139 +1,59 @@
-# --------------------
+# Hackathon Testing Files (Keep Local Only)
+hackathon_testing/
+test_*.py
+check_*.py
+analyze_*.py
+verify_*.py
+quick_*.py
+fix_*.py
+diagnose_*.py
+investigate_*.py
+demo_*.py
+ultra_fast_check.py
+qa_service.py
+simple_api.py
+server.py
+launch_system.py
+
 # Python
-# --------------------
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pdb
-*.egg
-*.egg-info/
-dist/
-build/
+*.py[cod]
+*$py.class
 *.so
-*.dylib
-*.dll
-*.exe
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# --------------------
-# Virtual Environments
-# --------------------
-.venv/
-venv/
-env/
-ENV/
-virt/
-.conda/
-conda-meta/
-
-# --------------------
-# Environment Files & Secrets
-# --------------------
+# Virtual environments
 .env
-*.env
-.env.local
-.env.development
-.env.production
-.env.test
-config.ini
-secrets.json
-api_keys.txt
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
 
-# --------------------
-# Data Files (local only, don't push to GitHub)
-# --------------------
-*.csv
-*.tsv
-*.xlsx
-*.xls
-*.json
-*.db
-*.sqlite
-*.sqlite3
-datasets123/
-datasets/
-data/
-raw_data/
-processed_data/
-master_groundwater_data.csv
-cleaned_groundwater_data.csv
-users.json
-chat_histories/
-*.log
-
-# --------------------
-# AI/ML Models & Cache
-# --------------------
-models/
-*.model
-*.pkl
-*.joblib
-*.h5
-*.hdf5
-*.pt
-*.pth
-*.bin
-.cache/
-transformers_cache/
-sentence_transformers_cache/
-qdrant_data/
-
-# --------------------
-# Streamlit
-# --------------------
-.streamlit/
-
-# --------------------
-# Node.js & Frontend
-# --------------------
-node_modules/
-frontend/node_modules/
-package-lock.json
-frontend/package-lock.json
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.npm
-.yarn-integrity
-frontend/dist/
-frontend/build/
-frontend/.vite/
-
-# --------------------
-# IDE & Editor Files
-# --------------------
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.project
-.pydevproject
-.settings/
-*.sublime-project
-*.sublime-workspace
 
-# --------------------
-# Testing & Coverage
-# --------------------
-.coverage
-.pytest_cache/
-.tox/
-htmlcov/
-.nox/
-coverage.xml
-*.cover
-.hypothesis/
-
-# --------------------
-# Jupyter Notebooks
-# --------------------
-.ipynb_checkpoints/
-*.ipynb
-
-# --------------------
-# OS & System Files
-# --------------------
+# OS
 .DS_Store
 .DS_Store?
 ._*
@@ -141,37 +61,30 @@ coverage.xml
 .Trashes
 ehthumbs.db
 Thumbs.db
-desktop.ini
-*.tmp
-*.temp
 
-# --------------------
-# Logs & Debug Files
-# --------------------
-*.log
-logs/
-debug.log
-error.log
-access.log
+# Git
+.git/
+.gitignore
 
-# --------------------
-# Temporary Files
-# --------------------
-*.tmp
-*.temp
-*.bak
-*.backup
-*.orig
-*.rej
+# Large datasets (not needed in container)
+INGRIS DATASETS/
+test_chroma_db/
+chroma_db/
+chromadb_data/
+local_test_files/
 
-# --------------------
-# Project Specific
-# --------------------
-test_*.py
+# Development files
 *_test.py
-debug_*.py
-temp_*.py
-*.pyc
-*.pyo
-*.pyd
-DS_Store
+*_testing.py
+*_debug.py
+*_temp.py
+
+# Documentation (keep only essential)
+*.md
+!README.md
+
+# Other unnecessary files
+firestore.rules
+LICENSE
+users.json
+karnataka_fix_patch.txt
