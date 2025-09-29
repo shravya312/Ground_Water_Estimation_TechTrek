@@ -72,6 +72,13 @@ test_chroma_db/
 chroma_db/
 chromadb_data/
 local_test_files/
+ingris_rag_ready_complete.csv
+master_groundwater_data.csv
+dropdown_data.json
+
+# Node.js dependencies
+node_modules/
+frontend/node_modules/
 
 # Development files
 *_test.py

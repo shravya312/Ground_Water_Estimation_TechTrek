@@ -1,6 +1,6 @@
 # 🌊 Groundwater Estimation TechTrek - SIH Project
 
-An AI-powered web application for groundwater analysis and visualization across India using RAG techniques interactive visualizations, and location-based analysis.
+An AI-powered web application for groundwater analysis and visualization across India using RAG techniques, interactive visualizations, and location-based analysis.
 
 ## 🚀 Quick Start
 
@@ -33,25 +33,23 @@ pip install -r requirements.txt
 # QDRANT_URL=your-qdrant-url
 # QDRANT_API_KEY=your-qdrant-api-key
 # GEMINI_API_KEY=your-gemini-api-key
-
 ```
 
 ### 3. Frontend Setup
 ```bash
 cd frontend
 npm install
-
 ```
 
 ## 🏃‍♂️ Running the Application
 
-### Terminal 1: Start Backend
+**Terminal 1: Start Backend**
 ```bash
 cd Ground_Water_Estimation_TechTrek
 uvicorn main:app --reload --port 8000
 ```
 
-### Terminal 2: Start Frontend
+**Terminal 2: Start Frontend**
 ```bash
 cd Ground_Water_Estimation_TechTrek/frontend
 npm run dev
@@ -61,8 +59,6 @@ npm run dev
 - **Main App**: http://localhost:5173
 - **API Docs**: http://localhost:8000/docs
 - **Health Check**: http://localhost:8000/health
-
-
 
 ## 📁 Project Structure
 ```
@@ -80,5 +76,5 @@ Ground_Water_Estimation_TechTrek/
 
 ## 🔑 Required API Keys
 - **Qdrant Cloud**: Vector database
-- **Google Gemini**: AI chat functionality  
+- **Google Gemini**: AI chat functionality
 - **Google Maps**: Interactive mapping
