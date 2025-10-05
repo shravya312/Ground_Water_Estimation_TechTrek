@@ -1,6 +1,5 @@
 pandas
 spacy
-spacy-model-en-core-web-sm
 openpyxl
 numpy
 sentence-transformers
@@ -19,3 +18,4 @@ torch
 IndicTransToolkit
 langdetect
 plotly
+spacy==3.6.1
