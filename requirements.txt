@@ -1,5 +1,5 @@
 # Core data and ML packages
-numpy==1.26.5
+numpy==1.25.2
 pandas==2.0.3  # Using stable prebuilt wheel for Python 3.11
 scikit-learn==1.3.3
 sentence-transformers==2.2.2
