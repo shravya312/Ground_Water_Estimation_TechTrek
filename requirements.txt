@@ -13,7 +13,7 @@ huggingface-hub==0.17.3
 transformers==4.32.0
 flask-cors==4.1.2
 fastapi==0.109.1
-uvicorn==0.24.0
+uvicorn==0.23.2
 torch==2.1.1
 IndicTransToolkit==1.0.3
 langdetect==1.0.9
