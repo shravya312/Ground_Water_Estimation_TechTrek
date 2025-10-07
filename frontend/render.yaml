@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: groundwater-frontend
+    env: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://ground-water-estimation-techtrek-phwc.onrender.com
