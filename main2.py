@@ -128,14 +128,19 @@ _embeddings_uploaded = False
 
 app = FastAPI(title="Groundwater RAG API - Multilingual")
 
+ALLOWED_ORIGINS = [
+    "https://groundwater-eight.vercel.app",            # your frontend
+    "https://*.vercel.app",                            # optional wildcard
+    "http://localhost:5173", "http://127.0.0.1:5173"   # local dev
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Security
 security = HTTPBearer()
 
