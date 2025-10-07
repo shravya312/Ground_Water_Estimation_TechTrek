@@ -1,7 +1,7 @@
 # 🌊 Groundwater Estimation TechTrek - SIH Project
 
 An AI-powered web application for groundwater analysis and visualization across India using RAG techniques, interactive visualizations, and location-based analysis.
-
+main2.py 
 ## 🚀 Quick Start
 
 ### Prerequisites
@@ -46,7 +46,7 @@ npm install
 **Terminal 1: Start Backend**
 ```bash
 cd Ground_Water_Estimation_TechTrek
-uvicorn main:app --reload --port 8000
+uvicorn main2:app --reload --port 8000
 ```
 
 **Terminal 2: Start Frontend**
