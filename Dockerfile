@@ -15,8 +15,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install --upgrade pip && pip install -r requirements.txt && \
-    python -m spacy download en_core_web_sm
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Download spaCy model separately
+RUN python -m spacy download en_core_web_sm
 
 COPY . .
 
