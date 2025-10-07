@@ -39,6 +39,7 @@ pip install -r requirements.txt
 ```bash
 cd frontend
 npm install
+npm run dev
 ```
 
 ## 🏃‍♂️ Running the Application
@@ -46,7 +47,7 @@ npm install
 **Terminal 1: Start Backend**
 ```bash
 cd Ground_Water_Estimation_TechTrek
-uvicorn main:app --reload --port 8000
+uvicorn main2:app --reload --port 8000
 ```
 
 **Terminal 2: Start Frontend**
