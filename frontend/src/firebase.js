@@ -3,14 +3,24 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getAnalytics, isSupported } from 'firebase/analytics'
 
+// Read config from Vite environment variables so deployment values are used
+const required = (key) => {
+  const value = import.meta.env[key]
+  if (!value) {
+    throw new Error(`Missing environment variable: ${key}`)
+  }
+  return value
+}
+
 const firebaseConfig = {
-    apiKey: 'AIzaSyAeTuo2YxnwKhkWv1Iz2pWFx_OrSjNSDcw',
-    authDomain: 'techtrek-adba1.firebaseapp.com',
-    projectId: 'techtrek-adba1',
-    storageBucket: 'techtrek-adba1.firebasestorage.app',
-    messagingSenderId: '385921130982',
-    appId: '1:385921130982:web:17cf06b7c742ed3c96f627',
-    measurementId: 'G-SSQ0X8GVSR'
+  apiKey: required('VITE_FIREBASE_API_KEY'),
+  authDomain: required('VITE_FIREBASE_AUTH_DOMAIN'),
+  projectId: required('VITE_FIREBASE_PROJECT_ID'),
+  // Note: For Firebase Storage the bucket is typically <projectId>.appspot.com
+  storageBucket: required('VITE_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: required('VITE_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: required('VITE_FIREBASE_APP_ID'),
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || undefined,
 }
 
 const app = initializeApp(firebaseConfig)
@@ -18,6 +28,8 @@ const auth = getAuth(app)
 const db = getFirestore(app)
 const provider = new GoogleAuthProvider()
 
-isSupported().then((ok) => { if (ok) getAnalytics(app) })
+isSupported().then((ok) => {
+  if (ok) getAnalytics(app)
+})
 
 export { app, auth, db, provider }
