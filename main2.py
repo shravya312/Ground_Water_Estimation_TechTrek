@@ -287,15 +287,19 @@ def initialize_sentence_transformer():
                 return False
 
 def _init_components():
-    """Ultra-fast startup - only initialize absolutely essential components"""
+    """Ultra-fast startup - Qdrant as primary data source"""
     global _qdrant_client, _model, _nlp, _gemini_model, _master_df, _translator_model, _translator_tokenizer, _indic_processor
     
     print("Starting application...")
     
-    # Only load CSV data for state extraction (fastest essential component)
+    # Initialize Qdrant as primary data source first
+    print("Initializing Qdrant as primary data source...")
+    _init_qdrant()
+    
+    # Try to load CSV data as optional fallback
     if _master_df is None:
         try:
-            print("Loading data...")
+            print("Loading optional CSV data...")
             _master_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
             _master_df['STATE'] = _master_df['state'].fillna('').astype(str)
             _master_df['DISTRICT'] = _master_df['district'].fillna('').astype(str)
@@ -303,13 +307,15 @@ def _init_components():
             # Handle year column with 'Unknown' values
             _master_df['year'] = _master_df['year'].replace('Unknown', 2020)
             _master_df['Assessment_Year'] = pd.to_numeric(_master_df['year'], errors='coerce').fillna(2020).astype(int)
-            print("Data ready")
+            print("CSV data loaded successfully")
         except FileNotFoundError:
-            raise Exception("Error: ingris_rag_ready_complete.csv not found.")
+            print("CSV file not found - using Qdrant as primary data source")
+            _master_df = pd.DataFrame()  # Empty DataFrame as fallback
         except Exception as e:
-            raise Exception(f"Error loading data: {str(e)}")
+            print(f"CSV loading failed: {str(e)} - using Qdrant as primary data source")
+            _master_df = pd.DataFrame()  # Empty DataFrame as fallback
     
-    print("Application ready - other components will load on demand")
+    print("Application ready - Qdrant is primary data source")
 
 def _init_qdrant():
     """Initialize Qdrant client when needed"""
