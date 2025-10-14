@@ -1,7 +1,7 @@
 # 🌊 Groundwater Estimation TechTrek - SIH Project
 
 An AI-powered web application for groundwater analysis and visualization across India using RAG techniques, interactive visualizations, and location-based analysis.
-##main2.py contains the FastAPI implementation of the chatbot.
+## main2.py contains the FastAPI implementation of the chatbot.
 
 ## 🚀 Quick Start
 
