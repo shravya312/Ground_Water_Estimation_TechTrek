@@ -128,19 +128,14 @@ _embeddings_uploaded = False
 
 app = FastAPI(title="Groundwater RAG API - Multilingual")
 
-ALLOWED_ORIGINS = [
-    "https://groundwater-eight.vercel.app",            # your frontend
-    "https://*.vercel.app",                            # optional wildcard
-    "http://localhost:5173", "http://127.0.0.1:5173"   # local dev
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 # Security
 security = HTTPBearer()
 
@@ -292,19 +287,15 @@ def initialize_sentence_transformer():
                 return False
 
 def _init_components():
-    """Ultra-fast startup - Qdrant as primary data source"""
+    """Ultra-fast startup - only initialize absolutely essential components"""
     global _qdrant_client, _model, _nlp, _gemini_model, _master_df, _translator_model, _translator_tokenizer, _indic_processor
     
     print("Starting application...")
     
-    # Initialize Qdrant as primary data source first
-    print("Initializing Qdrant as primary data source...")
-    _init_qdrant()
-    
-    # Try to load CSV data as optional fallback
+    # Only load CSV data for state extraction (fastest essential component)
     if _master_df is None:
         try:
-            print("Loading optional CSV data...")
+            print("Loading data...")
             _master_df = pd.read_csv("ingris_rag_ready_complete.csv", low_memory=False)
             _master_df['STATE'] = _master_df['state'].fillna('').astype(str)
             _master_df['DISTRICT'] = _master_df['district'].fillna('').astype(str)
@@ -312,15 +303,13 @@ def _init_components():
             # Handle year column with 'Unknown' values
             _master_df['year'] = _master_df['year'].replace('Unknown', 2020)
             _master_df['Assessment_Year'] = pd.to_numeric(_master_df['year'], errors='coerce').fillna(2020).astype(int)
-            print("CSV data loaded successfully")
+            print("Data ready")
         except FileNotFoundError:
-            print("CSV file not found - using Qdrant as primary data source")
-            _master_df = pd.DataFrame()  # Empty DataFrame as fallback
+            raise Exception("Error: ingris_rag_ready_complete.csv not found.")
         except Exception as e:
-            print(f"CSV loading failed: {str(e)} - using Qdrant as primary data source")
-            _master_df = pd.DataFrame()  # Empty DataFrame as fallback
+            raise Exception(f"Error loading data: {str(e)}")
     
-    print("Application ready - Qdrant is primary data source")
+    print("Application ready - other components will load on demand")
 
 def _init_qdrant():
     """Initialize Qdrant client when needed"""
@@ -1525,6 +1514,26 @@ def extract_query_parameters(query: str) -> dict:
         'target_district': target_district
     }
 
+def _safe_mean_numeric(df: pd.DataFrame, column_name: str) -> Optional[float]:
+    """Return the mean of a column after safely converting to numeric.
+
+    Handles numbers stored as strings (with commas, spaces, or stray characters).
+    Returns None if no numeric values are present.
+    """
+    if column_name not in df.columns:
+        return None
+    series = df[column_name]
+    # Convert to string, strip commas and whitespace, then coerce to numeric
+    numeric_series = pd.to_numeric(
+        series.astype(str).str.replace(",", "", regex=False).str.strip(),
+        errors="coerce",
+    )
+    numeric_series = numeric_series.dropna()
+    if numeric_series.empty:
+        return None
+    return float(numeric_series.mean())
+
+
 def calculate_average_values(df, target_state=None, target_district=None):
     """Calculate average values when year is not specified."""
     if df is None or df.empty:
@@ -1550,11 +1559,10 @@ def calculate_average_values(df, target_state=None, target_district=None):
         'ground_water_extraction_for_all_uses_ham'
     ]
     for col in extraction_cols:
-        if col in df.columns:
-            avg_val = df[col].mean()
-            if not pd.isna(avg_val):
-                averages['extraction'] = round(avg_val, 2)
-                break
+        avg_val = _safe_mean_numeric(df, col)
+        if avg_val is not None and not pd.isna(avg_val):
+            averages['extraction'] = round(avg_val, 2)
+            break
     
     # Groundwater recharge
     recharge_cols = [
@@ -1562,11 +1570,10 @@ def calculate_average_values(df, target_state=None, target_district=None):
         'annual_ground_water_recharge_ham'
     ]
     for col in recharge_cols:
-        if col in df.columns:
-            avg_val = df[col].mean()
-            if not pd.isna(avg_val):
-                averages['recharge'] = round(avg_val, 2)
-                break
+        avg_val = _safe_mean_numeric(df, col)
+        if avg_val is not None and not pd.isna(avg_val):
+            averages['recharge'] = round(avg_val, 2)
+            break
     
     # Rainfall
     rainfall_cols = [
@@ -1574,11 +1581,10 @@ def calculate_average_values(df, target_state=None, target_district=None):
         'rainfall_mm'
     ]
     for col in rainfall_cols:
-        if col in df.columns:
-            avg_val = df[col].mean()
-            if not pd.isna(avg_val):
-                averages['rainfall'] = round(avg_val, 2)
-                break
+        avg_val = _safe_mean_numeric(df, col)
+        if avg_val is not None and not pd.isna(avg_val):
+            averages['rainfall'] = round(avg_val, 2)
+            break
     
     # Stage of extraction
     stage_cols = [
@@ -1586,11 +1592,10 @@ def calculate_average_values(df, target_state=None, target_district=None):
         'stage_of_ground_water_extraction_'
     ]
     for col in stage_cols:
-        if col in df.columns:
-            avg_val = df[col].mean()
-            if not pd.isna(avg_val):
-                averages['extraction_stage'] = round(avg_val, 2)
-                break
+        avg_val = _safe_mean_numeric(df, col)
+        if avg_val is not None and not pd.isna(avg_val):
+            averages['extraction_stage'] = round(avg_val, 2)
+            break
     
     # Quality tagging distribution
     quality_cols = ['quality_tagging', 'Quality Tagging']
