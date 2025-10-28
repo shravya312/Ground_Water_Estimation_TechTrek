@@ -130,9 +130,15 @@ app = FastAPI(title="Groundwater RAG API - Multilingual")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:5173", 
+        "https://groundwater-eight.vercel.app",
+        "https://groundwater-eight.vercel.app/",
+        "*"  # Fallback for development
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -4701,6 +4707,16 @@ async def health_check():
         }
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for deployment monitoring."""
+    return {
+        "status": "healthy",
+        "message": "Groundwater RAG API is running",
+        "version": "1.0.0",
+        "timestamp": pd.Timestamp.now().isoformat()
+    }
 
 @app.get("/")
 async def root():
