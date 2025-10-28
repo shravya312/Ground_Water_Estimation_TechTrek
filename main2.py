@@ -1514,6 +1514,26 @@ def extract_query_parameters(query: str) -> dict:
         'target_district': target_district
     }
 
+def _safe_mean_numeric(df: pd.DataFrame, column_name: str) -> Optional[float]:
+    """Return the mean of a column after safely converting to numeric.
+
+    Handles numbers stored as strings (with commas, spaces, or stray characters).
+    Returns None if no numeric values are present.
+    """
+    if column_name not in df.columns:
+        return None
+    series = df[column_name]
+    # Convert to string, strip commas and whitespace, then coerce to numeric
+    numeric_series = pd.to_numeric(
+        series.astype(str).str.replace(",", "", regex=False).str.strip(),
+        errors="coerce",
+    )
+    numeric_series = numeric_series.dropna()
+    if numeric_series.empty:
+        return None
+    return float(numeric_series.mean())
+
+
 def calculate_average_values(df, target_state=None, target_district=None):
     """Calculate average values when year is not specified."""
     if df is None or df.empty:
@@ -1539,11 +1559,10 @@ def calculate_average_values(df, target_state=None, target_district=None):
         'ground_water_extraction_for_all_uses_ham'
     ]
     for col in extraction_cols:
-        if col in df.columns:
-            avg_val = df[col].mean()
-            if not pd.isna(avg_val):
-                averages['extraction'] = round(avg_val, 2)
-                break
+        avg_val = _safe_mean_numeric(df, col)
+        if avg_val is not None and not pd.isna(avg_val):
+            averages['extraction'] = round(avg_val, 2)
+            break
     
     # Groundwater recharge
     recharge_cols = [
@@ -1551,11 +1570,10 @@ def calculate_average_values(df, target_state=None, target_district=None):
         'annual_ground_water_recharge_ham'
     ]
     for col in recharge_cols:
-        if col in df.columns:
-            avg_val = df[col].mean()
-            if not pd.isna(avg_val):
-                averages['recharge'] = round(avg_val, 2)
-                break
+        avg_val = _safe_mean_numeric(df, col)
+        if avg_val is not None and not pd.isna(avg_val):
+            averages['recharge'] = round(avg_val, 2)
+            break
     
     # Rainfall
     rainfall_cols = [
@@ -1563,11 +1581,10 @@ def calculate_average_values(df, target_state=None, target_district=None):
         'rainfall_mm'
     ]
     for col in rainfall_cols:
-        if col in df.columns:
-            avg_val = df[col].mean()
-            if not pd.isna(avg_val):
-                averages['rainfall'] = round(avg_val, 2)
-                break
+        avg_val = _safe_mean_numeric(df, col)
+        if avg_val is not None and not pd.isna(avg_val):
+            averages['rainfall'] = round(avg_val, 2)
+            break
     
     # Stage of extraction
     stage_cols = [
@@ -1575,11 +1592,10 @@ def calculate_average_values(df, target_state=None, target_district=None):
         'stage_of_ground_water_extraction_'
     ]
     for col in stage_cols:
-        if col in df.columns:
-            avg_val = df[col].mean()
-            if not pd.isna(avg_val):
-                averages['extraction_stage'] = round(avg_val, 2)
-                break
+        avg_val = _safe_mean_numeric(df, col)
+        if avg_val is not None and not pd.isna(avg_val):
+            averages['extraction_stage'] = round(avg_val, 2)
+            break
     
     # Quality tagging distribution
     quality_cols = ['quality_tagging', 'Quality Tagging']
